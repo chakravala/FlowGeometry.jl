@@ -1,6 +1,8 @@
 module FlowGeometry
 
-#=using Requires, Compose, Grassmann
+using Requires, StaticArrays
+
+#=using Compose, Grassmann
 import Grassmann: vector
 
 @inline field_components(M,n=2) = ([[M[x,y][k] for x ∈ 1:length(M[:,1]), y ∈ 1:length(M[1,:])] for k ∈ 1:n]...,)
@@ -14,15 +16,20 @@ function __init__()
     end
 end=#
 
-function nacas(n,pts)
+export NACA, naca, nacapoints
+
+struct NACA{N,P} end
+
+naca(n,p) = NACA{n,p}()
+
+function nacapoints(::NACA{n,pts}) where {n,pts}
     ns=string(n,pad=4)
     Mi,Pi,Ti = parse.(Int,(ns[1],ns[2],ns[3:4]))
-    a = SVector(0.2969,-0.1260,-0.3515,0.2843,-0.1015) # open trailing edge
-    #-0.1036 # closed trailing edge
+    a = SVector(0.2969,-0.1260,-0.3515,0.2843,-0.1036)
     M,P,T = Mi/100,Pi/10,Ti/100
     x = range(0,1,length=pts)
     # camber and gradient
-    yc,dyc_dx,θ = zeros(pts),zeros(pts),zeros(pts)
+    yc,dyc_dx = zeros(pts),zeros(pts)
     for i ∈ 1:pts
         if x[i] ≥ 0 && x[i] < P
             yc[i] = (M/P^2)*((2P*x[i])-x[i]^2)
@@ -31,36 +38,29 @@ function nacas(n,pts)
             yc[i] = (M/(1-P)^2)*(1-2P+2P*x[i]-x[i]^2)
             dyc_dx[i] = (2M/(1-P)^2)*(P-x[i])
         end
-        θ[i] = atan(dyc_dx[i])
     end
+    θ = atan.(dyc_dx)
     # thickness distribution
-    yt = zeros(pts)
-    for i ∈ 1:pts
-        term0 = a[1]*sqrt(x[i])
-        term1 = a[2]*x[i]
-        term2 = a[3]*x[i]^2
-        term3 = a[4]*x[i]^3
-        term4 = a[5]*x[i]^4
-        yt[i] = 5T*(term0+term1+term2+term3+term4)
-    end
-    # upper surface points
-    xu,yu = zeros(pts),zeros(pts)
-    for i ∈ 1:pts
-        xu[i] = x[i] - yt[i]*sin(θ[i])
-        yu[i] = yc[i] + yt[i]*cos(θ[i])
-    end
-    # lower surface points
-    xl,yl = zeros(pts),zeros(pts)
-    for i ∈ 1:pts
-        xl[i] = x[i] + yt[i]*sin(θ[i])
-        yl[i] = yc[i] - yt[i]*cos(θ[i])
-    end
-    xu[end] = 1
-    xl[end] = 1
-    yu[end] = 0
-    yl[end] = 0
+    yt = 5T*(a[1]*sqrt.(x).+a[2]*x+a[3]*x.^2+a[4]*x.^3+a[5]*x.^4)
+    # upper surface points xu+im*yu
+    U = (x.+im.*yc).+im.*cis.(θ).*yt; U[end] = 1
+    # lower surface points xl+im*yl
+    L = (x.+im.*yc).-im.*cis.(θ).*yt; L[end] = 1
+    return U,L
+end
+
+function nacageom(N::NACA{n,pts}) where {n,pts}
+    U,L = nacapoints(N)
     rect = [[3,4,-1,2,2,-1,1,1,-1,-1];zeros(4pts-12)]
-    [rect [[2,2pts-2];xu;reverse(xl)[2:end-1];yu;reverse(yl)[2:end-1]]],"R-A","RA"
+    [rect [[2,2pts-2];real.(U);reverse(real.(L)[2:end-1]);imag.(U);reverse(imag.(L)[2:end-1])]]
+end
+
+function __init__()
+    @require MATLAB="10e44e05-a98a-55b3-a45b-ba969058deb6" begin
+        decsg(args...) = MATLAB.mxcall(:decsg,1,args...)
+        decsg(N::NACA) = decsg(nacageom(N),"R-A","RA")
+        export decsg
+    end
 end
 
 end # module
