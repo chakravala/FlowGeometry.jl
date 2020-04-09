@@ -1,4 +1,4 @@
-name = "ProjectiveGeometry"
+name = "FlowGeometry"
 uuid = "af326652-bfa1-11e9-1b34-cf9047ce1632"
 authors = ["Michael Reed"]
 version = "0.1.0"
