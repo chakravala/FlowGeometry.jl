@@ -58,9 +58,9 @@ function nacasplit(::NACA5{n,p}) where {n,p}
 end
 
 function points(::Joukowski{R,f,g,b,p}) where {R,f,g,b,p}
-    θ = range(0,2π,length=2p-2)
+    θ = range(0,2π,length=2p-1)
     z = R*cis.(θ).-(f-g*im)
-    z.+b^2*conj.(z)./abs2.(z)
+    z.+b^2*inv.(z)
 end
 
 function points(N::Union{NACA,NACA5})
@@ -80,14 +80,90 @@ function nacasplit(x,yc,P,M,T)
     end
     θ = atan.(dyc_dx)
     # thickness distribution
-    a = SVector(0.2969,-0.1260,-0.3515,0.2843,-0.1036)
-    yt = 5T*(a[1]*sqrt.(x).+a[2]*x+a[3]*x.^2+a[4]*x.^3+a[5]*x.^4)
+    yt = thickness(x,T)
     # upper surface points xu+im*yu
     U = (x.+im.*yc).+im.*cis.(θ).*yt; U[end] = 1
     # lower surface points xl+im*yl
     L = (x.+im.*yc).-im.*cis.(θ).*yt; L[end] = 1
     return U,L
 end
+
+const Thickness = SVector(
+    SVector(0.2969,-0.1260,-0.3515,0.2843,-0.1036))
+
+function thickness(x,T,::Val{n}=Val(1)) where n
+    5T*(a[n][1]*sqrt.(x).+a[n][2]*x+a[n][3]*x.^2+a[n][4]*x.^3+a[n][5]*x.^4)
+end
+
+# circular arc
+
+export triangle, triangles, initrakich, arc, arcslope, FittedPoint
+
+triangle(i,m,p) = triangle(((i-1)%(2(m-1)))+1,((i-1)÷(2(m-1)))+1,m,p)
+triangle(i,j,m,p) = (k=(j-1)*m+(i÷2)+1;n=m+k;Chain{p,1}(isodd(i) ? SVector(k,k+1,n) : SVector(k,n,n-1)))
+#triangle(i,j,m,p) = (k=(j-1)*m+(i÷2)+1;n=m+k;Chain{p,1}(isodd(i) ? SVector(k,n+1,n) : SVector(k-1,k,n)))
+
+triangles(p,m=51,JL=51) = [triangle(i,JL,p) for i ∈ 1:2*(m-1)*(JL-1)]
+
+function RakichNewton(D=50,JL=51,Δy=6e-3)
+    κ,j = 1,1/(JL-1)
+    for n ∈ 1:10
+        eκ,ejκ = ℯ^κ, ℯ^(j*κ)
+        κ -= (((ejκ-1)*D - (eκ-1)*Δy)*(eκ-1)) / ((ejκ*(eκ*(j-1)-j) + eκ)*D)
+    end
+    return κ
+end
+
+Rakich(κ,j,y0=0,D=50,JL=51) = y0 + (D-y0)*(exp(κ*(j-1)/(JL-1))-1)/(exp(κ)-1)
+RakichLine(y=0,D=50,JL=51,Δy=6e-3,κ=RakichNewton(D-y,JL,Δy)) = Rakich.(κ,1:JL,y,D,JL)
+
+function RakichPlate(x=0,c=1,n=21,D=50,JL=51)
+    Δx = (c-x)/(n-1)
+    r = RakichLine(x,D,((JL-n)÷2)+1,Δx)
+    [-reverse(r);(x:Δx:c)[2:end-1];r.+1]
+end
+
+function RakichPoint(k,x,y,s,κ,JL=legnth(y))
+    xk,yk = ((k-1)÷JL)+1,((k-1)%JL)+1
+    Chain{SubManifold(ℝ^3),1}(1.0,x[xk],s[xk]≠0 ? Rakich(κ[xk],JL-yk+1,s[xk],y[1],JL) : y[yk])
+end
+
+function RakichPoints(x0=0,c=1,t=0.06,D=50,n=51,m=21,JL=51)
+    x = RakichPlate(x0,c,m,D,n)
+    y = reverse(RakichLine(0,D,JL,t/10))
+    s = arc.(x,t,c,x0)
+    κ = [k≠0 ? RakichNewton(D-k,JL,t/10) : 0.0 for k ∈ s]
+    [RakichPoint(k,x,y,s,κ,JL) for k ∈ 1:n*JL]
+end
+
+function FittedPoint(k,JL=51)
+    xk,yk = ((k-1)÷JL)+1,((k-1)%JL)+1
+    Chain{SubManifold(ℝ^3),1}(1,xk,-yk)
+end
+
+function arc(x,t=0.06,c=1,x0=0)
+    (x<x0 || x>c) && return 0.0
+    r = ((c/2)^2+t^2)/2t
+    r*sin(acos((x-x0-c/2)/r))-r+t
+    #ct = c^2-4t^2
+    #((sqrt(-16(2(x-x0)-c)^2*t^2 + ct^2) - ct)*ct) / (8abs(ct)*t)
+end
+
+arcslope(x::Chain,t=0.06,c=1,x0=0) = arcslope(x[2],t,c,x0)
+function arcslope(x,t=0.06,c=1,x0=0)
+    (x<x0 || x>c) && return 0.0
+    #r = ((c/2)^2+t^2)/2t # Algebra.df(arc(:x),:x)
+    #((c-2(x-x0))*r) / (sqrt(4r^2-((2(x-x0) - c)^2))*abs(r))
+    xc,t2 = 2(x-x0)-c,t^2
+    (-4xc*t2) / (sqrt((c^2 + 4t2)^2 - 16xc^2*t2)*t)
+end
+
+function initrakich(x0=0,c=1,t=0.06,D=50,n=101,m=61,JL=51)
+    p = ChainBundle(RakichPoints(x0,c,t,D,n,m,JL))
+    return p,ChainBundle(triangles(p,n))
+end
+
+# init
 
 function __init__()
     @require AbstractPlotting="537997a7-5e4e-5d89-9595-2241ea00577e" begin
