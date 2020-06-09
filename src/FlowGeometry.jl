@@ -125,21 +125,18 @@ end
 
 function RakichPoint(k,x,y,s,κ,JL=legnth(y))
     xk,yk = ((k-1)÷JL)+1,((k-1)%JL)+1
-    Chain{SubManifold(ℝ^3),1}(1.0,x[xk],s[xk]≠0 ? Rakich(κ[xk],JL-yk+1,s[xk],y[1],JL) : y[yk])
+    Chain{SubManifold(ℝ^3),1}(1.0,x[xk],s[xk]≠0 ? Rakich(κ[xk],yk,s[xk],y[end],JL) : y[yk])
 end
 
 function RakichPoints(x0=0,c=1,t=0.06,D=50,n=51,m=21,JL=51)
     x = RakichPlate(x0,c,m,D,n)
-    y = reverse(RakichLine(0,D,JL,t/10))
+    y = RakichLine(0,D,JL,t/10)
     s = arc.(x,t,c,x0)
     κ = [k≠0 ? RakichNewton(D-k,JL,t/10) : 0.0 for k ∈ s]
     [RakichPoint(k,x,y,s,κ,JL) for k ∈ 1:n*JL]
 end
 
-function FittedPoint(k,JL=51)
-    xk,yk = ((k-1)÷JL)+1,((k-1)%JL)+1
-    Chain{SubManifold(ℝ^3),1}(1,xk,-yk)
-end
+FittedPoint(k,JL=51) = Chain{SubManifold(ℝ^3),1}(1,(k-1)÷JL,(k-1)%JL)
 
 function arc(x,t=0.06,c=1,x0=0)
     (x<x0 || x>c) && return 0.0
