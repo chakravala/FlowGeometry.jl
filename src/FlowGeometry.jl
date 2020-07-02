@@ -1,7 +1,6 @@
 module FlowGeometry
 
-using Requires, StaticArrays
-import Grassmann: points
+using Requires, StaticArrays, Grassmann
 
 export Joukowski, NACA, NACA5, joukowski, naca, naca5, nacasplit, nacapoints
 
@@ -100,8 +99,8 @@ end
 export triangle, triangles, initrakich, arc, arcslope, FittedPoint
 
 triangle(i,m,p) = triangle(((i-1)%(2(m-1)))+1,((i-1)÷(2(m-1)))+1,m,p)
-triangle(i,j,m,p) = (k=(j-1)*m+(i÷2)+1;n=m+k;Chain{p,1}(isodd(i) ? SVector(k,k+1,n) : SVector(k,n,n-1)))
-#triangle(i,j,m,p) = (k=(j-1)*m+(i÷2)+1;n=m+k;Chain{p,1}(isodd(i) ? SVector(k,n+1,n) : SVector(k-1,k,n)))
+triangle(i,j,m,p) = (k=(j-1)*m+(i÷2)+1;n=m+k;Chain{p,1}(isodd(i) ? SVector(k,n,k+1) : SVector(k,n-1,n)))
+#triangle(i,j,m,p) = (k=(j-1)*m+(i÷2)+1;n=m+k;Chain{p,1}(iseven(i) ? SVector(k,n,n+1) : SVector(k,k-1,n)))
 
 triangles(p,m=51,JL=51) = [triangle(i,JL,p) for i ∈ 1:2*(m-1)*(JL-1)]
 
@@ -136,7 +135,9 @@ function RakichPoints(x0=0,c=1,t=0.06,D=50,n=51,m=21,JL=51)
     [RakichPoint(k,x,y,s,κ,JL) for k ∈ 1:n*JL]
 end
 
-FittedPoint(k,JL=51) = Chain{SubManifold(ℝ^3),1}(1,(k-1)÷JL,(k-1)%JL)
+FittedPoint(k,JL=51) = Chain{SubManifold(ℝ^3),1}(1.0,(k-1)÷JL,(k-1)%JL)
+
+RectangleBounds(n=51,JL=51) = [1:JL:JL*n; JL*(n-1)+2:JL*n; JL*(n-1):-JL:JL; JL-1:-1:2]
 
 function arc(x,t=0.06,c=1,x0=0)
     (x<x0 || x>c) && return 0.0
@@ -157,7 +158,9 @@ end
 
 function initrakich(x0=0,c=1,t=0.06,D=50,n=101,m=61,JL=51)
     p = ChainBundle(RakichPoints(x0,c,t,D,n,m,JL))
-    return p,ChainBundle(triangles(p,n))
+    b,V = RectangleBounds(n,JL),p(2,3); push!(b,1)
+    e = ChainBundle(Chain{V,1,Int}.([(b[i],b[i+1]) for i ∈ 1:length(b)-1]))
+    return p,e,ChainBundle(triangles(p,n))
 end
 
 # init
