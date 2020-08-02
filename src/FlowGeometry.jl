@@ -5,16 +5,16 @@ module FlowGeometry
 
 using Requires, StaticArrays, Grassmann, Adapode
 
-import Grassmann: points, edges, initedges
+import Grassmann: points, edges, initpoints, initedges
 import Base: @pure
 
-export Joukowski, NACA, joukowski, naca
+export chord, chordedges, edgeslist, edgeslist!, addbound, airfoilbox, airfoiledges, rectcirc
 
 include("profiles.jl")
 include("airfoils.jl")
 
-chord(N::A) where A<:Profile{p} where p = Grassmann.initpoints(interval(N))
-chordedges(N::A) where A<:Profile{P} where P = Chain{ChainBundle(chord(N)),1}.(1:P-1,2:P)
+initpoints(N::A) where A<:Profile{p} where p = initpoints(interval(N))
+initedges(N::A) where A<:Profile{P} where P = initedges(ChainBundle(initpoints(N)))
 
 function edgeslist(p::ChainBundle)
     Chain{p(2,3),1}.(1:length(p),[2:length(p);1])
@@ -55,15 +55,22 @@ function rectcirc(n,xn,xm,yn,ym,c::Chain{V}=Chain{SubManifold(ℝ^3),1}(1.0,0.0,
     return out
 end
 
+# rectangular structured triangles
+
+export rectangletriangle, rectangletriangles, FittedPoint
+
+rectangletriangle(i,m,p) = triangle(((i-1)%(2(m-1)))+1,((i-1)÷(2(m-1)))+1,m,p)
+rectangletriangle(i,j,m,p) = (k=(j-1)*m+(i÷2)+1;n=m+k;Chain{p,1}(isodd(i) ? SVector(k,n,k+1) : SVector(k,n-1,n)))
+#rectangletriangle(i,j,m,p) = (k=(j-1)*m+(i÷2)+1;n=m+k;Chain{p,1}(iseven(i) ? SVector(k,n,n+1) : SVector(k,k-1,n)))
+
+rectangletriangles(p,m=51,JL=51) = [rectangletriangle(i,JL,p) for i ∈ 1:2*(m-1)*(JL-1)]
+rectanglebounds(n=51,JL=51) = [1:JL:JL*n; JL*(n-1)+2:JL*n; JL*(n-1):-JL:JL; JL-1:-1:2]
+
+FittedPoint(k,JL=51) = Chain{SubManifold(ℝ^3),1}(1.0,(k-1)÷JL,(k-1)%JL)
+
 # Rakich stretch mesh
 
-export triangle, triangles, initrakich, arc, arcslope, FittedPoint
-
-triangle(i,m,p) = triangle(((i-1)%(2(m-1)))+1,((i-1)÷(2(m-1)))+1,m,p)
-triangle(i,j,m,p) = (k=(j-1)*m+(i÷2)+1;n=m+k;Chain{p,1}(isodd(i) ? SVector(k,n,k+1) : SVector(k,n-1,n)))
-#triangle(i,j,m,p) = (k=(j-1)*m+(i÷2)+1;n=m+k;Chain{p,1}(iseven(i) ? SVector(k,n,n+1) : SVector(k,k-1,n)))
-
-triangles(p,m=51,JL=51) = [triangle(i,JL,p) for i ∈ 1:2*(m-1)*(JL-1)]
+export initrakich, arc, arcslope, FittedPoint
 
 function RakichNewton(D=50,JL=51,Δy=6e-3)
     κ,j = 1,1/(JL-1)
@@ -77,10 +84,10 @@ end
 Rakich(κ,j,y0=0,D=50,JL=51) = y0 + (D-y0)*(exp(κ*(j-1)/(JL-1))-1)/(exp(κ)-1)
 RakichLine(y=0,D=50,JL=51,Δy=6e-3,κ=RakichNewton(D-y,JL,Δy)) = Rakich.(κ,1:JL,y,D,JL)
 
-function RakichPlate(x=0,c=1,n=21,D=50,JL=51)
-    Δx = (c-x)/(n-1)
-    r = RakichLine(x,D,((JL-n)÷2)+1,Δx)
-    [-reverse(r);(x:Δx:c)[2:end-1];r.+1]
+function RakichPlate(::Profile{n},D=50,JL=51) where n
+    x = interval(n)
+    r = RakichLine(-x[1],D,((JL-n)÷2)+1,Float64(x.step))
+    [-reverse(r);x[2:end-1];r.+((x[1]>0 ? 2 : -1)*x[1]+x[end])]
 end
 
 function RakichPoint(k,x,y,s,κ,JL=legnth(y))
@@ -88,23 +95,20 @@ function RakichPoint(k,x,y,s,κ,JL=legnth(y))
     Chain{SubManifold(ℝ^3),1}(1.0,x[xk],s[xk]≠0 ? Rakich(κ[xk],yk,s[xk],y[end],JL) : y[yk])
 end
 
-function RakichPoints(x0=0,c=1,t=0.06,D=50,n=51,m=21,JL=51)
-    x = RakichPlate(x0,c,m,D,n)
+function RakichPoints(P::CircularArc{T,m}=CircularArc{6,21}(),D=50,n=51,JL=51) where {T,m}
+    t,c,x0 = T/100,1,0
+    x = RakichPlate(P,D,n)
     y = RakichLine(0,D,JL,t/10)
-    s = arc.(x,t,c,x0)
+    s = profile.(Ref(P),x,c,x0)
     κ = [k≠0 ? RakichNewton(D-k,JL,t/10) : 0.0 for k ∈ s]
     [RakichPoint(k,x,y,s,κ,JL) for k ∈ 1:n*JL]
 end
 
-FittedPoint(k,JL=51) = Chain{SubManifold(ℝ^3),1}(1.0,(k-1)÷JL,(k-1)%JL)
-
-RectangleBounds(n=51,JL=51) = [1:JL:JL*n; JL*(n-1)+2:JL*n; JL*(n-1):-JL:JL; JL-1:-1:2]
-
-function initrakich(x0=0,c=1,t=0.06,D=50,n=101,m=61,JL=51)
-    p = ChainBundle(RakichPoints(x0,c,t,D,n,m,JL))
-    b,V = RectangleBounds(n,JL),p(2,3); push!(b,1)
+function initrakich(P=CircularArc{6,61}(),D=50,n=101,JL=51)
+    p = ChainBundle(RakichPoints(P,D,n,JL))
+    b,V = rectanglebounds(n,JL),p(2,3); push!(b,1)
     e = ChainBundle(Chain{V,1,Int}.([(b[i],b[i+1]) for i ∈ 1:length(b)-1]))
-    return p,e,ChainBundle(triangles(p,n))
+    return p,e,ChainBundle(rectangletriangles(p,n))
 end
 
 # points

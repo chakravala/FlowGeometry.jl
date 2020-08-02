@@ -4,49 +4,40 @@
 
 abstract type Airfoil{p} end
 
-# upper
-
-struct UpperArc{A,p} <: Profile{p}
-    a::A
-    @pure UpperArc{A,p}(a) where {A,p} = new{A,p}(a)
-end
-
-@pure UpperArc(s::S) where S<:Airfoil{P} where P = UpperArc{S,length(upper(s))}(s)
-
-interval(U::UpperArc)  = real.(upper(U.a))
-profile(U::UpperArc) = imag.(upper(U.a))
-profileslope(f::UpperArc,e=chordedges(f)) = interp(e,column(gradient(e,profile(f))))
-
-# lower
-
-struct LowerArc{A,p} <: Profile{p}
-    a::A
-    @pure LowerArc{A,p}(a) where {A,p} = new{A,p}(a)
-end
-
-@pure LowerArc(s::S) where S<:Airfoil{P} where P = LowerArc{S,length(lower(s))}(s)
-
-interval(U::LowerArc) = real.(lower(U.a))
-profile(U::LowerArc) = imag.(lower(U.a))
-profileslope(f::LowerArc,e=chordedges(f)) = interp(e,column(gradient(e,profile(f))))
+export Airfoil, UpperArc, LowerArc, SymmetricArc, DoubleArc, NACA, Joukowski
+export upper, lower, upperlower
 
 # Airfoils upper lower
 
-upper(z,r) = (U = z.+r; U[end] = 1; U) # upper surface points xu+im*yu
-lower(z,r) = (L = z.-r; L[end] = 1; L) # lower surface points xl+im*yl
-upper(z::A) where A<:Profile = upper(interval(z),profile(z).*im)
-lower(z::A) where A<:Profile = lower(interval(z),profile(z).*im)
-upperlower(z::A) where A<:Profile = upperlower(interval(z),profile(z).*im)
-upperlower(z::A) where A<:Airfoil = upper(z),lower(z)
-upperlower(z,r) = upper(z,r),lower(z,r)
-
-# Joukowski
-
-struct Joukowski{R,f,g,b,p} <: Airfoil{p}
-    @pure Joukowski{R,f,g,b,p}() where {R,f,g,b,p} = new{R,f,g,b,p}()
+for Side ∈ ("Upper","Lower")
+    Arc,side = Symbol(Side,:Arc),Symbol(lowercase(Side))
+    @eval begin
+        struct $Arc{A,p} <: Profile{p}
+            a::A
+            @pure $Arc{A,p}(a) where {A,p} = new{A,p}(a)
+        end
+        @pure $Arc(s::S) where S<:Airfoil{P} where P = $Arc{S,length($side(s))}(s)
+        $side(z::A,c=1,x0=0) where A<:Profile = $side(interval(z,c,x0),profile(z).*(c*im))
+        interval(U::$Arc,c=1,x0=0)  = real.($side(U.a,c,x0))
+        profile(U::$Arc) = imag.($side(U.a))
+        profileslope(f::$Arc,e=initedges(f)) = interp(e,column(gradient(e,profile(f))))
+    end
 end
 
-joukowski(R,f,g,b,p) = Joukowski{R,f,g,b,p}()
+upper(z,r) = (U = z.+r; U[end] = 1; U) # upper surface points xu+im*yu
+lower(z,r) = (L = z.-r; L[end] = 1; L) # lower surface points xl+im*yl
+upperlower(z::A,c=1,x=0) where A<:Profile = upperlower(interval(z,c,x),profile(z).*(c*im))
+upperlower(z::A,c=1,x=0) where A<:Airfoil = upper(z,c,x),lower(z,c,x)
+upperlower(z,r) = upper(z,r),lower(z,r)
+
+function Base.complex(N::A) where A<:Airfoil
+    U,L = upperlower(N)
+    [U;reverse(L)[2:end]]
+end
+function points(N::A) where A<:Airfoil
+    z = complex(N)[1:end-1]
+    Chain{SubManifold(ℝ^3),1}.(1.0,real.(z),imag.(z))
+end
 
 # SymmetricArc
 
@@ -57,9 +48,9 @@ end
 
 @pure SymmetricArc(s::S) where S<:Profile{P} where P = SymmetricArc{S,2P-2}(s)
 
-upper(n::SymmetricArc) = upper(n.s)
-lower(n::SymmetricArc) = lower(n.s)
-upperlower(n::SymmetricArc)= upperlower(n.s)
+upper(n::SymmetricArc,c=1,x0=0) = upper(n.s,c,x0)
+lower(n::SymmetricArc,c=1,x0=0) = lower(n.s,c,x0)
+upperlower(n::SymmetricArc,c=1,x0=0)= upperlower(n.s,c,x0)
 
 # DoubleArc
 
@@ -71,8 +62,8 @@ end
 
 @pure DoubleArc(u::U,l::L) where {U<:Profile{P},L<:Profile{Q}} where {P,Q} = DoubleArc{U,L,P+Q-2}(u,l)
 
-upper(n::DoubleArc{U,L,P}) where {U,L,P} = upper(n.u)
-lower(n::DoubleArc{U,L,P}) where {U,L,P} = lower(n.l)
+upper(n::DoubleArc{U,L,P},c=1,x0=0) where {U,L,P} = upper(n.u,c,x0)
+lower(n::DoubleArc{U,L,P},c=1,x0=0) where {U,L,P} = lower(n.l,c,x0)
 
 # NACA
 
@@ -85,42 +76,24 @@ end
 @pure NACA{n,p}() where {n,p} = NACA(Camber{Int(n÷100),p}(),ClarkY{n%100,p}())
 @pure NACA(c::C,t::T) where {C<:Profile{P},T<:Profile{P}} where P = NACA{C,T,2P-2}(c,t)
 
-upper(n::NACA) = upper(getprofiles(n)...)
-lower(n::NACA) = lower(getprofiles(n)...)
-upperlower(n::NACA) = upperlower(getprofiles(n)...)
+upper(n::NACA,c=1,x0=0) = upper(getprofiles(n,c,x0)...)
+lower(n::NACA,c=1,x0=0) = lower(getprofiles(n,c,x0)...)
+upperlower(n::NACA,c=1,x0=0) = upperlower(getprofiles(n,c,x0)...)
 upper(x,yc,dyc_dx,yt) = upper(x.+im.*yc,im.*cis.(atan.(dyc_dx)).*yt)
 lower(x,yc,dyc_dx,yt) = lower(x.+im.*yc,im.*cis.(atan.(dyc_dx)).*yt)
 upperlower(x,yc,dyc_dx,yt) = upperlower(x.+im.*yc,im.*cis.(atan.(dyc_dx)).*yt)
-getprofiles(n::NACA) = interval(n.c),profile(n.c),profileslope(n.c),profile(n.t)
+getprofiles(n::NACA,c=1,x0=0) = interval(n.c,c,x0),c*profile(n.c),profileslope(n.c),c*profile(n.t)
 
-# upper lower slope
+# Joukowski
 
-function getprofileslopes(n::NACA{c,t,p}) where {c,t,p}
-    range(0,1,length=p),profile(n.c),profileslope(n,c),profileslope(n.t)
+struct Joukowski{R,f,g,b,p} <: Airfoil{p}
+    @pure Joukowski{R,f,g,b,p}() where {R,f,g,b,p} = new{R,f,g,b,p}()
 end
 
-#=upperlowerslope(n::NACA) = upperlowerslope(getprofiles(n)...)
-function upperlowerslope(x,yc,dyc_dx,dyt_dx)
-    ((1+dyc_dx.^2).*dyt_dx .- yt.*dyc_dx.*dyt_dxdx)/(1 + dyc_dx.^2)^(3/2)
-    #upperlower(yc,cos.(θ).*dyt_dx)
-end=#
-
-# complex point sets
+joukowski(R,f,g,b,p) = Joukowski{R,f,g,b,p}()
 
 function Base.complex(::Joukowski{R,f,g,b,p}) where {R,f,g,b,p}
     θ = range(0,2π,length=2p-1)
     z = R*cis.(θ).-(f-g*im)
     z.+b^2*inv.(z)
 end
-function Base.complex(N::A) where A<:Airfoil
-    U,L = upperlower(N)
-    [U;reverse(L)[2:end]]
-end
-function points(N::A) where A<:Airfoil
-    z = complex(N)[1:end-1]
-    Chain{SubManifold(ℝ^3),1}.(1.0,real.(z),imag.(z))
-end
-function points(N::A) where A<:Profile{p} where p
-    Chain{SubManifold(ℝ^3),1}.(1.0,interval(N),profile(N))
-end
-
