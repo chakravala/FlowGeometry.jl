@@ -1,100 +1,61 @@
 module FlowGeometry
 
-using Requires, StaticArrays, Grassmann
+#   This file is part of FlowGeometry.jl. It is licensed under the AGPL license
+#   FlowGeometry Copyright (C) 2020 Michael Reed
 
-export Joukowski, NACA, NACA5, joukowski, naca, naca5, nacasplit, nacapoints
+using Requires, StaticArrays, Grassmann, Adapode
 
-abstract type Airfoil{P} end
+import Grassmann: points, edges, initedges
+import Base: @pure
 
-struct Joukowski{R,f,g,b,p} <: Airfoil{p}
-    Base.@pure Joukowski{R,f,g,b,p}() where {R,f,g,b,p} = new{R,f,g,b,p}()
+export Joukowski, NACA, joukowski, naca
+
+include("profiles.jl")
+include("airfoils.jl")
+
+chord(N::A) where A<:Profile{p} where p = Grassmann.initpoints(interval(N))
+chordedges(N::A) where A<:Profile{P} where P = Chain{ChainBundle(chord(N)),1}.(1:P-1,2:P)
+
+function edgeslist(p::ChainBundle)
+    Chain{p(2,3),1}.(1:length(p),[2:length(p);1])
+end
+function edgeslist!(p,r)
+    l,n = length(p),length(r)
+    push!(value(p),r...)
+    Chain{p(2,3),1}.(l+1:l+n,l.+[2:n;1])
 end
 
-joukowski(R,f,g,b,p) = Joukowski{R,f,g,b,p}()
+addbound(e,r=rectangle(xn,xm,yn,ym)) = [e;edgeslist!(points(e),r)]
+airfoilbox(n) = addbound(airfoiledges(n),rectangle(xn,xm,yn,ym))
+airfoiledges(n) = edgeslist(ChainBundle(points(n)))
 
-struct NACA{N,P} <: Airfoil{P}
-    Base.@pure NACA{N,P}() where {N,P} = new{N,P}()
-end
+function rectcirc(n,xn,xm,yn,ym,c::Chain{V}=Chain{SubManifold(ℝ^3),1}(1.0,0.0,0.0)) where V
+    x = float.([yn,xm,ym,xn])
+    r = rectangle(xn,xm,yn,ym)
+    rc = r.-c
+    at = [atan(k[3]/k[2]) for k ∈ rc] .+ [π,2π,0,π]
+    out = typeof(r)(undef,0)
+    for i ∈ 1:4
+        push!(out,r[i])
+        if isodd(i)
+            v = x[i]-c[3]
+            for k ∈ 1:n-2
+                w = v/tan(at[i]+k*((at[(i%4)+1]-at[i]+2π)%(2π))/(n-1))
+                push!(out,Chain{V,1}(1.0,w,x[i]))
+            end
+        else
+            v = x[i]-c[2]
+            for k ∈ 1:n-2
+                w = v*tan(at[i]+k*((at[(i%4)+1]-at[i]+2π)%(2π))/(n-1))
+                push!(out,Chain{V,1}(1.0,x[i],w))
+            end
 
-naca(n,p) = NACA{n,p}()
-
-function nacasplit(::NACA{n,p}) where {n,p}
-    ns=string(n,pad=4)
-    Mi,Pi,Ti = parse.(Int,(ns[1],ns[2],ns[3:4]))
-    M,P,T = Mi/100,Pi/10,Ti/100
-    x = range(0,1,length=p)
-    yc = zeros(p) # camber
-    for i ∈ 1:p
-        if x[i] ≥ 0 && x[i] < P
-            yc[i] = (M/P^2)*((2P*x[i])-x[i]^2)
-        elseif x[i] ≥ P && x[i] ≤ 1
-            yc[i] = (M/(1-P)^2)*(1-2P+2P*x[i]-x[i]^2)
         end
     end
-    nacasplit(x,yc,P,M,T)
+    return out
 end
 
-struct NACA5{N,P} <: Airfoil{P}
-    Base.@pure NACA5{N,P}() where {N,P} = new{N,P}()
-end
-
-naca5(n,p) = NACA5{n,p}()
-
-function nacasplit(::NACA5{n,p}) where {n,p}
-    ns = string(n,pad=5)
-    Ci,Pi,Ti = parse.(Int,(ns[1],ns[2:3],ns[4:5]))
-    Cl,P,T = 3Ci/20,Pi/20,Ti/100
-    x = range(0,1,length=p)
-    yc = zeros(p) # camber
-    for i ∈ 1:pts
-        if x[i] ≥ 0 && x[i] < P
-            yc[i] = k1*(x[i]^3-3M*x[i]^2+M^2*(3-M)*x[i])/6
-        elseif x[i] ≥ P && x[i] ≤ 1
-            yc[i] = k1*M^3*(1-x[i])/6
-        end
-    end
-    nacasplit(x,yc,M,P,T)
-end
-
-function points(::Joukowski{R,f,g,b,p}) where {R,f,g,b,p}
-    θ = range(0,2π,length=2p-1)
-    z = R*cis.(θ).-(f-g*im)
-    z.+b^2*inv.(z)
-end
-
-function points(N::Union{NACA,NACA5})
-    U,L = nacasplit(N)
-    [U;reverse(L)[2:end]]
-end
-
-function nacasplit(x,yc,P,M,T)
-    p = length(x)
-    dyc_dx = zeros(p) # gradient
-    for i ∈ 1:p
-        if x[i] ≥ 0 && x[i] < P
-            dyc_dx[i] = ((2M)/P^2)*(P-x[i])
-        elseif x[i] ≥ P && x[i] ≤ 1
-            dyc_dx[i] = (2M/(1-P)^2)*(P-x[i])
-        end
-    end
-    θ = atan.(dyc_dx)
-    # thickness distribution
-    yt = thickness(x,T)
-    # upper surface points xu+im*yu
-    U = (x.+im.*yc).+im.*cis.(θ).*yt; U[end] = 1
-    # lower surface points xl+im*yl
-    L = (x.+im.*yc).-im.*cis.(θ).*yt; L[end] = 1
-    return U,L
-end
-
-const Thickness = SVector(
-    SVector(0.2969,-0.1260,-0.3515,0.2843,-0.1036))
-
-function thickness(x,T,::Val{n}=Val(1)) where n
-    5T*(a[n][1]*sqrt.(x).+a[n][2]*x+a[n][3]*x.^2+a[n][4]*x.^3+a[n][5]*x.^4)
-end
-
-# circular arc
+# Rakich stretch mesh
 
 export triangle, triangles, initrakich, arc, arcslope, FittedPoint
 
@@ -139,23 +100,6 @@ FittedPoint(k,JL=51) = Chain{SubManifold(ℝ^3),1}(1.0,(k-1)÷JL,(k-1)%JL)
 
 RectangleBounds(n=51,JL=51) = [1:JL:JL*n; JL*(n-1)+2:JL*n; JL*(n-1):-JL:JL; JL-1:-1:2]
 
-function arc(x,t=0.06,c=1,x0=0)
-    (x<x0 || x>c) && return 0.0
-    r = ((c/2)^2+t^2)/2t
-    r*sin(acos((x-x0-c/2)/r))-r+t
-    #ct = c^2-4t^2
-    #((sqrt(-16(2(x-x0)-c)^2*t^2 + ct^2) - ct)*ct) / (8abs(ct)*t)
-end
-
-arcslope(x::Chain,t=0.06,c=1,x0=0) = arcslope(x[2],t,c,x0)
-function arcslope(x,t=0.06,c=1,x0=0)
-    (x<x0 || x>c) && return 0.0
-    #r = ((c/2)^2+t^2)/2t # Algebra.df(arc(:x),:x)
-    #((c-2(x-x0))*r) / (sqrt(4r^2-((2(x-x0) - c)^2))*abs(r))
-    xc,t2 = 2(x-x0)-c,t^2
-    (-4xc*t2) / (sqrt((c^2 + 4t2)^2 - 16xc^2*t2)*t)
-end
-
 function initrakich(x0=0,c=1,t=0.06,D=50,n=101,m=61,JL=51)
     p = ChainBundle(RakichPoints(x0,c,t,D,n,m,JL))
     b,V = RectangleBounds(n,JL),p(2,3); push!(b,1)
@@ -163,35 +107,119 @@ function initrakich(x0=0,c=1,t=0.06,D=50,n=101,m=61,JL=51)
     return p,e,ChainBundle(triangles(p,n))
 end
 
+# points
+
+export icosahedron, cube, box, sphere
+
+square(x) = square(-x,x)
+square(xn,xm) = rectangle(xn,xm,xn,xm)
+rectangle(xn,xm,yn,ym) = Chain{SubManifold(ℝ^3),1}.(SVector{3,Float64}.(
+    [(1.0,xn, yn), (1.0,xm, yn),
+     (1.0,xm, ym), (1.0,xn, ym)]))
+
+cube(x) = cube(-x,x)
+cube(xn,xm) = box(xn,xm,xn,xm,xn,xm)
+box(xn,xm,yn,ym,zn,zm) = Chain{SubManifold(ℝ^4),1}.(SVector{4,Float64}.(
+    [(1.0,xn, yn, zn), (1.0,xm, yn, zn),
+     (1.0,xm, ym, zn), (1.0,xn, ym, zn),
+     (1.0,xn, yn, zm), (1.0,xm, yn, zm),
+     (1.0,xm, ym, zm), (1.0,xn, ym, zm)]))
+
+icosahedron(a=1,b=a*Irrational{:φ}()) =
+    Chain{SubManifold(ℝ^4),1}.(SVector.(
+     [(1,0,a,b),(1,b,0,a),(1,a,b,0),
+      (1,0,a,-b),(1,-b,0,a),(1,a,-b,0),
+      (1,0,-a,b),(1,b,0,-a),(1,-a,b,0),
+      (1,0,-a,-b),(1,-b,0,-a),(1,-a,-b,0)]))
+
+@generated function circlemid(x,r)
+    v = Λ(SubManifold(ℝ^4)).v1
+    :(r*Grassmann.unit(x/2-$v) + $v)
+end
+
+sphere(r=1) = icosahedron(r/sqrt(1+Irrational{:φ}()^2))
+function sphere(fac::Vector,r=1,p=points(fac))
+    M = Manifold(fac)
+    out = typeof(fac[1])[]
+    for f ∈ fac
+        p0,p1,p2 = p[value(f)]
+        p3 = circlemid(p0+p1,r)
+        p4 = circlemid(p1+p2,r)
+        p5 = circlemid(p2+p0,r)
+        v0,v1,v2 = value(f)
+        v3,v4,v5 = length(p).+(1,2,3)
+        push!(value(p),p3,p4,p5)
+        push!(out,Chain{M,1}(v0, v3, v5))
+        push!(out,Chain{M,1}(v3, v1, v4))
+        push!(out,Chain{M,1}(v4, v2, v5))
+        push!(out,Chain{M,1}(v3, v4, v5))
+    end
+    return out
+end
+
+function cubesphere(r=1,c=2)
+    p = ChainBundle(sphere(r))
+    t = sphere(sphere(∂(MiniQhull.delaunay(p)),r),r)
+    push!(value(p),cube(c*r)...)
+    [t;∂(MiniQhull.delaunay(p,length(p)-7:length(p)))]
+end
+
 # init
 
 function __init__()
     @require AbstractPlotting="537997a7-5e4e-5d89-9595-2241ea00577e" begin
+        function AbstractPlotting.plot(N::Profile,args...)
+            AbstractPlotting.plot(interval(N),profile(N),args...)
+        end
+        function AbstractPlotting.plot!(N::Profile,args...)
+            AbstractPlotting.plot!(interval(N),profile(N),args...)
+        end
         function AbstractPlotting.plot(N::Airfoil,args...)
-            U,L = nacasplit(N)
+            U,L = upperlower(N)
             AbstractPlotting.plot(real.(U),imag.(U),args...)
+            length(U)==length(L) && AbstractPlotting.plot!(real.(U),(imag.(U).+imag.(L))./2,args...)
             AbstractPlotting.plot!(real.(L),imag.(L),args...)
         end
         function AbstractPlotting.plot!(N::Airfoil,args...)
-            U,L = nacasplit(N)
+            U,L = upperlower(N)
             AbstractPlotting.plot!(real.(U),imag.(U),args...)
+            length(U)==length(L) && AbstractPlotting.plot!(real.(U),(imag.(U).+imag.(L))./2,args...)
             AbstractPlotting.plot!(real.(L),imag.(L),args...)
         end
+        function AbstractPlotting.plot(N::NACA,args...)
+            U,L = upperlower(N)
+            AbstractPlotting.plot(real.(U),imag.(U),args...)
+            AbstractPlotting.plot!(real.(L),imag.(L),args...)
+            AbstractPlotting.plot!(N.c)
+            #AbstractPlotting.plot!(N.t)
+        end
+        function AbstractPlotting.plot!(N::NACA,args...)
+            U,L = upperlower(N)
+            AbstractPlotting.plot!(real.(U),imag.(U),args...)
+            AbstractPlotting.plot!(real.(L),imag.(L),args...)
+            AbstractPlotting.plot!(N.c)
+            #AbstractPlotting.plot!(N.t)
+        end
         function AbstractPlotting.lines(N::Airfoil,args...)
-            P = points(N)
+            P = complex(N)
             AbstractPlotting.lines([real.(P) imag.(P)],args...)
         end
         function AbstractPlotting.lines!(N::Airfoil,args...)
-            P = points(N)
+            P = complex(N)
             AbstractPlotting.lines!([real.(P) imag.(P)],args...)
         end
     end
+    @require TetGen="c5d3f3f7-f850-59f6-8a2e-ffc6dc1317ea" begin
+        spheremesh() = TetGen.tetrahedralize(cubesphere(),"vpq1.414a0.1";holes=[Point(0.0,0.0,0.0)])
+        cubemesh() = TetGen.tetrahedralize(∂(MiniQhull.delaunay(cube(2))), "vpq1.414a0.1")
+    end
+    @require MiniQhull="978d7f02-9e05-4691-894f-ae31a51d76ca" begin end
     @require MATLAB="10e44e05-a98a-55b3-a45b-ba969058deb6" begin
         decsg(args...) = MATLAB.mxcall(:decsg,1,args...)
         function decsg(N::Airfoil{pts}) where pts
-            P = points(N)
+            P = complex(N)[1:end-1]
             R = [[3,4,-1,2,2,-1,1,1,-1,-1];zeros(4pts-12)]
-            A = [[2,2pts-2];[real.(P[1:end-1]);imag.(P[1:end-1])]]
+            A = [[2,2pts-2];[real.(P);imag.(P)]]
             decsg([R A],"R-A","RA")
         end
         export decsg
