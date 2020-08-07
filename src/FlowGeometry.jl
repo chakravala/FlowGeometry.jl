@@ -179,30 +179,12 @@ function __init__()
             AbstractPlotting.plot!(interval(N),profile(N),args...)
         end
         function AbstractPlotting.plot(N::Airfoil,args...)
-            U,L = upperlower(N)
-            AbstractPlotting.plot(real.(U),imag.(U),args...)
-            length(U)==length(L) && AbstractPlotting.plot!(real.(U),(imag.(U).+imag.(L))./2,args...)
-            AbstractPlotting.plot!(real.(L),imag.(L),args...)
+            AbstractPlotting.lines(N,args...)
+            AbstractPlotting.plot!(N.c,args...)
         end
         function AbstractPlotting.plot!(N::Airfoil,args...)
-            U,L = upperlower(N)
-            AbstractPlotting.plot!(real.(U),imag.(U),args...)
-            length(U)==length(L) && AbstractPlotting.plot!(real.(U),(imag.(U).+imag.(L))./2,args...)
-            AbstractPlotting.plot!(real.(L),imag.(L),args...)
-        end
-        function AbstractPlotting.plot(N::NACA,args...)
-            U,L = upperlower(N)
-            AbstractPlotting.plot(real.(U),imag.(U),args...)
-            AbstractPlotting.plot!(real.(L),imag.(L),args...)
-            AbstractPlotting.plot!(N.c)
-            #AbstractPlotting.plot!(N.t)
-        end
-        function AbstractPlotting.plot!(N::NACA,args...)
-            U,L = upperlower(N)
-            AbstractPlotting.plot!(real.(U),imag.(U),args...)
-            AbstractPlotting.plot!(real.(L),imag.(L),args...)
-            AbstractPlotting.plot!(N.c)
-            #AbstractPlotting.plot!(N.t)
+            AbstractPlotting.lines!(N,args...)
+            AbstractPlotting.plot!(N.c,args...)
         end
         function AbstractPlotting.lines(N::Airfoil,args...)
             P = complex(N)
@@ -211,6 +193,52 @@ function __init__()
         function AbstractPlotting.lines!(N::Airfoil,args...)
             P = complex(N)
             AbstractPlotting.lines!([real.(P) imag.(P)],args...)
+        end
+        function AbstractPlotting.plot(N::DoubleArc,args...)
+            U,L = upperlower(N)
+            AbstractPlotting.plot(real.(U),imag.(U),args...)
+            length(U)==length(L) && AbstractPlotting.plot!(real.(U),(imag.(U).+imag.(L))./2,args...)
+            AbstractPlotting.plot!(real.(L),imag.(L),args...)
+        end
+        function AbstractPlotting.plot!(N::DoubleArc,args...)
+            U,L = upperlower(N)
+            AbstractPlotting.plot!(real.(U),imag.(U),args...)
+            length(U)==length(L) && AbstractPlotting.plot!(real.(U),(imag.(U).+imag.(L))./2,args...)
+            AbstractPlotting.plot!(real.(L),imag.(L),args...)
+        end
+    end
+    @require UnicodePlots="b8865327-cd53-5732-bb35-84acbb429228" begin
+        function UnicodePlots.Plot(N::Profile,args...)
+            UnicodePlots.lineplot(interval(N),profile(N),args...)
+        end
+        function Plot!(p,N::Profile,args...)
+            UnicodePlots.lineplot!(p,interval(N),profile(N),args...)
+        end
+        function UnicodePlots.Plot(N::Airfoil,args...)
+            Plot!(UnicodePlots.lineplot(N,args...),N.c,args...)
+        end
+        function Plot!(p,N::Airfoil,args...)
+            Plot!(UnicodePlots.lineplot!(p,N,args...),N.c,args...)
+        end
+        function UnicodePlots.lineplot(N::Airfoil,args...)
+            P = complex(N)
+            UnicodePlots.lineplot(real.(P),imag.(P),args...)
+        end
+        function UnicodePlots.lineplot!(p,N::Airfoil,args...)
+            P = complex(N)
+            UnicodePlots.lineplot!(p,real.(P),imag.(P),args...)
+        end
+        function UnicodePlots.Plot(N::DoubleArc,args...)
+            U,L = upperlower(N)
+            p = UnicodePlots.lineplot(real.(U),imag.(U),args...)
+            length(U)==length(L) && UnicodePlots.lineplot!(p,real.(U),(imag.(U).+imag.(L))./2,args...)
+            UnicodePlots.lineplot!(p,real.(L),imag.(L),args...)
+        end
+        function Plot!(p,N::DoubleArc,args...)
+            U,L = upperlower(N)
+            UnicodePlots.lineplot!(p,real.(U),imag.(U),args...)
+            length(U)==length(L) && UnicodePlots.lineplot!(p,real.(U),(imag.(U).+imag.(L))./2,args...)
+            UnicodePlots.lineplot!(p,real.(L),imag.(L),args...)
         end
     end
     @require TetGen="c5d3f3f7-f850-59f6-8a2e-ffc6dc1317ea" begin

@@ -4,8 +4,9 @@
 
 approx(x,y) = [x^i for i ∈ 0:length(y)-1]⋅y
 
-export FlatPlate, ParabolicArc, CircularArc, ClarkY, Thickness, Modified, Camber
-export profile, profileslope, interval
+export FlatPlate, ParabolicArc, CircularArc, ClarkY, Thickness, Modified
+export profile, profileslope, profileangle, interval
+export NACA4, NACA5, NACA6, NACA6A
 
 # profiles
 
@@ -13,8 +14,10 @@ abstract type Profile{P} end
 
 profile(p::T) where T<:Profile = profile.(Ref(p),interval(p))
 profileslope(p::T) where T<:Profile = profileslope.(Ref(p),interval(p))
+profileangle(p::T) where T<:Profile = atan.(profileslope(p))
 @pure profile(p::T,x,c,x0=0) where T<:Profile = profile(p,(x-x0)/c)*c
 @pure profileslope(p::T,x,c,x0=0) where T<:Profile = profileslope(p,(x-x0)/c)
+@pure profileangle(p::T,x,c,x0=0) where T<:Profile = atan(profileslope(p,x,c,x0))
 @pure interval(::P,c=1,x0=0) where P<:Profile{p} where p = interval(p,c,x0)
 @pure interval(p::Int,c=1,x0=0) = range(x0,c,length=p)
 function points(N::A,c=1,x0=0) where A<:Profile{p} where p
@@ -29,7 +32,7 @@ end
 
 @pure profile(::FlatPlate,x,c=nothing,x0=nothing) = 0.0
 @pure profileslope(::FlatPlate,x,c=nothing,x0=nothing) = 0.0
-@pure profile(::FlatPlate{p}) where p = range(0,0,length=p)
+@pure profile(f::FlatPlate{p}) where p = range(0,0,length=p)
 @pure profileslope(f::FlatPlate) = profile(f)
 
 # parabolic arc
@@ -151,16 +154,46 @@ end
 # NACA camber
 # https://ntrs.nasa.gov/archive/nasa/casi.ntrs.nasa.gov/19930091610.pdf
 
-struct Camber{n,p} <: Profile{p}
-    @pure Camber{n,p}() where {n,p} = new{n,p}()
+struct NACA4{n,p} <: Profile{p}
+    @pure NACA4{n,p}() where {n,p} = new{n,p}()
 end
 
-@pure function camber2(n) # decode
+@pure function naca4(n) # decode
     ns = string(n,pad=2)
     M,P = parse.(Int,(ns[1],ns[2]))
     return M/100,P/10
 end
-@pure function camber3(n) # decode
+
+const ℝ3 = SubManifold(ℝ^3)
+
+@pure C(x) = Chain{ℝ3,1}(1.0,x,x^2)
+@pure dC(x) = Chain{ℝ3,1}(0.0,1.0,2x)
+
+@pure function naca4(m,p)
+    cm,y,dy = Chain{ℝ3,1}(m,0.0,0.0),C(p),dC(p)
+    transpose(Chain{ℝ3,1}(y,dy,C(0.0)))\cm,
+    transpose(Chain{ℝ3,1}(y,dy,C(1.0)))\cm
+end
+
+@pure function profile(::NACA4{n},x) where n
+    (x<0 || x>1) && (return 0.0)
+    m,p = naca4(n)
+    (C(x)⋅naca4(m,p)[x < p ? 1 : 2])[1]
+end
+@pure function profileslope(::NACA4{n},x) where n
+    (x<0 || x>1) && (return 0.0)
+    m,p = naca4(n)
+    (dC(x)⋅naca4(m,p)[x < p ? 1 : 2])[1]
+end
+
+# NACA camber 5 series
+# https://ntrs.nasa.gov/archive/nasa/casi.ntrs.nasa.gov/19930091610.pdf
+
+struct NACA5{n,p} <: Profile{p}
+    @pure NACA5{n,p}() where {n,p} = new{n,p}()
+end
+
+@pure function naca5(n) # decode
     ns=string(n)
     C,P,R = parse.(Int,(ns[1],ns[2],ns[3]))
     m,p = C/2,P/20 # Cl = 3C/20
@@ -182,42 +215,88 @@ end
     return m*k1,r,k1k2
 end
 
-const ℝ3 = SubManifold(ℝ^3)
-
-@pure C(x) = Chain{ℝ3,1}(1.0,x,x^2)
-@pure dC(x) = Chain{ℝ3,1}(0.0,1.0,2x)
-
-@pure function camber2(m,p)
-    cm,y,dy = Chain{ℝ3,1}(m,0.0,0.0),C(p),dC(p)
-    transpose(Chain{ℝ3,1}(y,dy,C(0.0)))\cm,
-    transpose(Chain{ℝ3,1}(y,dy,C(1.0)))\cm
+@pure function profile(::NACA5{n},x) where n
+    (x<0 || x>1) && (return 0.0)
+    mk1,p,k1k2 = naca5(n)
+    mk1*(p^3*(1-x)+(if x < p
+        (x-p)^3-(k1k2≠0 ? k1k2*x*(1-p)^3 : 0)
+    else
+        k1k2≠0 ? k1k2*((x-p)^3-x*(1-p)^3) : 0
+    end))/6
+end
+@pure function profileslope(::NACA5{n},x) where n
+    (x<0 || x>1) && (return 0.0)
+    mk1,p,k1k2 = naca5(n)
+    mk1*(-p^3+(if x < p
+        3(p-x)^2-(k1k2≠0 ? k1k2*(1-p)^3 : 0)
+    else
+        k1k2≠0 ? 3k1k2*((p-x)^2-(1-p)^3) : 0
+    end))
 end
 
-@pure function profile(::Camber{n},x) where n
-    (x<0 || x>1) && (return 0.0)
-    if n < 100
-        m,p = camber2(n)
-        (C(x)⋅camber2(m,p)[x < p ? 1 : 2])[1]
+# NACA camber 6 series
+# https://ntrs.nasa.gov/archive/nasa/casi.ntrs.nasa.gov/19930091610.pdf
+
+struct NACA6{c,n,p} <: Profile{p}
+    a::SVector{n,Float64}
+    Cl::SVector{n,Float64}
+    @pure NACA6{p}(a,Cl) where p = new{10sum(Cl),length(Cl),p}(a,Cl)
+    @pure NACA6{c,p}() where {c,p} = NACA6{p}(SVector(1.0),SVector(c/10))
+end # angle of attack: αᵢ = Cla*h
+
+@pure function naca6(n::NACA6) # decode
+    a1 = 1.0.-n.a; a12 = (a1.^2)./2
+    g = .-((n.a.^2).*(log.(n.a)./2.0.-1/4).+1/4)./a1
+    h = (a12.*log.(a1).-a12./2)./a1 .+ g
+    #h = a1.*(log.(a1)./2.0.-1/4) .+ g
+    return n.Cl./(2π.*(1.0.+n.a)),n.a,h,g
+end
+@pure function naca6(x,a,g,h)
+    x1 = 1 - x
+    if a == 1.0
+        -(x1*log(x1)+x*log(x))
     else
-        mk1,p,k1k2 = camber3(n)
-        mk1*(p^3*(1-x)+(if x < p
-            (x-p)^3-(k1k2≠0 ? k1k2*x*(1-p)^3 : 0)
-        else
-            k1k2≠0 ? k1k2*((x-p)^3-x*(1-p)^3) : 0
-        end))/6
+        a1,ax = 1-a,a-x
+        x12,ax2 = x1^2,ax^2
+        ((ax2*log(abs(ax))-x12*log(x1))+(x12-ax2)/2)/2a1-x*log(x)+g-h*x
     end
 end
-@pure function profileslope(::Camber{n},x) where n
-    (x<0 || x>1) && (return 0.0)
-    if n < 100
-        m,p = camber2(n)
-        (dC(x)⋅camber2(m,p)[x < p ? 1 : 2])[1]
+@pure function naca6(x,a,h)
+    if a == 1.0
+        log(1-x)-log(x)
     else
-        mk1,p,k1k2 = camber3(n)
-        mk1*(-p^3+(if x < p
-            3(p-x)^2-(k1k2≠0 ? k1k2*(1-p)^3 : 0)
-        else
-            k1k2≠0 ? 3k1k2*((p-x)^2-(1-p)^3) : 0
-        end))
+        x1,ax = 1-x,a-x
+        (x1*log(x1)-ax*log(ax))/(1-a)-log(x)-1-h
     end
+end
+
+@pure function profile(n::NACA6,x)
+    (x<1e-7 || x>1-1e-7) && (return 0.0)
+    Cla,a,g,h = naca6(n)
+    sum(Cla.*naca6.(x,a,g,h))
+end
+@pure function profileslope(n::NACA6,x)
+    (x<1e-7 || x>1-1e-7) && (return 0.0)
+    Cla,a,h = naca6(n)
+    sum(Cla.*naca6.(x,a,h))
+end
+
+# NACA camber 6A series
+# https://ntrs.nasa.gov/archive/nasa/casi.ntrs.nasa.gov/19930091610.pdf
+
+struct NACA6A{c,p} <: Profile{p}
+    @pure NACA6A{c,p}() where {c,p} = new{c,p}()
+end
+
+@pure function profile(::NACA6A{c},x) where c
+    (x<0 || x>1) && (return 0.0)
+    (c/36π)*(if x < 0.87437
+        sum.(naca6(x,0.8,SVector(0),SVector(0)))
+    else # (0.0302164,-0.245209)/2π(1+a)
+        0.34173943292855025-2.773248454778759(x-0.87437)
+    end)
+end
+@pure function profileslope(::NACA6A{c},x) where c
+    (x<0 || x>1) && (return 0.0)
+    x < 0.87437 ? (c/36π)*sum.(naca6(x,0.8,SVector(0))) : -0.0245209c
 end

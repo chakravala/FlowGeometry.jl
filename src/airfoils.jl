@@ -4,8 +4,8 @@
 
 abstract type Airfoil{p} end
 
-export Airfoil, UpperArc, LowerArc, SymmetricArc, DoubleArc, NACA, Joukowski
-export upper, lower, upperlower
+export Airfoil, UpperArc, LowerArc, SymmetricArc, DoubleArc, @NACA_str, Joukowski
+export upper, lower, upperlower, American, British
 
 # Airfoils upper lower
 
@@ -24,8 +24,14 @@ for Side ∈ ("Upper","Lower")
     end
 end
 
+@pure chord(p) = range(0,0,length=p)
+@pure chord(::Profile{p}) where p = chord(p)
+@pure chord(::Airfoil{p}) where p = chord(p)
 upper(z,r) = (U = z.+r; U[end] = 1; U) # upper surface points xu+im*yu
 lower(z,r) = (L = z.-r; L[end] = 1; L) # lower surface points xl+im*yl
+upper(x,yc,dyc_dx,yt) = upper(x.+im.*yc,im.*cis.(atan.(dyc_dx)).*yt)
+lower(x,yc,dyc_dx,yt) = lower(x.+im.*yc,im.*cis.(atan.(dyc_dx)).*yt)
+upperlower(x,yc,dyc_dx,yt) = upperlower(x.+im.*yc,im.*cis.(atan.(dyc_dx)).*yt)
 upperlower(z::A,c=1,x=0) where A<:Profile = upperlower(interval(z,c,x),profile(z).*(c*im))
 upperlower(z::A,c=1,x=0) where A<:Airfoil = upper(z,c,x),lower(z,c,x)
 upperlower(z,r) = upper(z,r),lower(z,r)
@@ -41,6 +47,11 @@ end
 
 # SymmetricArc
 
+"""
+    SymmetricArc{U,L,P} <: Airfoil
+
+Symmetric arc airfoil constructed from a profile without camber applied.
+"""
 struct SymmetricArc{S,P} <: Airfoil{P}
     s::S
     @pure SymmetricArc{S,P}(s) where {S,P} = new{S,P}(s)
@@ -54,6 +65,11 @@ upperlower(n::SymmetricArc,c=1,x0=0)= upperlower(n.s,c,x0)
 
 # DoubleArc
 
+"""
+    DoubleArc{U,L,P} <: Airfoil
+
+Asymmetric double arc airfoil constructed from upper and lower profile.
+"""
 struct DoubleArc{U,L,P} <: Airfoil{P}
     u::U
     l::L
@@ -65,24 +81,68 @@ end
 upper(n::DoubleArc{U,L,P},c=1,x0=0) where {U,L,P} = upper(n.u,c,x0)
 lower(n::DoubleArc{U,L,P},c=1,x0=0) where {U,L,P} = lower(n.l,c,x0)
 
-# NACA
+# Rotated thickness by camber slope
 
-struct NACA{C,T,P} <: Airfoil{P} # NACA custom
+"""
+    British{C,T,P} <: Airfoil
+
+Thickness measured perpendicular to the chord line, British convention.
+"""
+struct British{C,T,P} <: Airfoil{P}
     c::C
     t::T
-    @pure NACA{C,T,P}(c,t) where {C,T,P} = new{C,T,P}(c,t)
+    @pure British{C,T,P}(c,t) where {C,T,P} = new{C,T,P}(c,t)
 end
 
-@pure NACA{n,p}() where {n,p} = NACA(Camber{Int(n÷100),p}(),ClarkY{n%100,p}())
-@pure NACA(c::C,t::T) where {C<:Profile{P},T<:Profile{P}} where P = NACA{C,T,2P-2}(c,t)
+@pure British{n,p}() where {n,p} = British(Camber{Int(n÷100),p}(),ClarkY{n%100,p}())
+@pure British(c::C,t::T) where {C<:Profile{P},T<:Profile{P}} where P = British{C,T,2P-2}(c,t)
 
-upper(n::NACA,c=1,x0=0) = upper(getprofiles(n,c,x0)...)
-lower(n::NACA,c=1,x0=0) = lower(getprofiles(n,c,x0)...)
-upperlower(n::NACA,c=1,x0=0) = upperlower(getprofiles(n,c,x0)...)
-upper(x,yc,dyc_dx,yt) = upper(x.+im.*yc,im.*cis.(atan.(dyc_dx)).*yt)
-lower(x,yc,dyc_dx,yt) = lower(x.+im.*yc,im.*cis.(atan.(dyc_dx)).*yt)
-upperlower(x,yc,dyc_dx,yt) = upperlower(x.+im.*yc,im.*cis.(atan.(dyc_dx)).*yt)
-getprofiles(n::NACA,c=1,x0=0) = interval(n.c,c,x0),c*profile(n.c),profileslope(n.c),c*profile(n.t)
+upper(n::British,c=1,x0=0) = upper(getprofiles(n,c,x0)...)
+lower(n::British,c=1,x0=0) = lower(getprofiles(n,c,x0)...)
+upperlower(n::British,c=1,x0=0) = upperlower(getprofiles(n,c,x0)...)
+getprofiles(n::British,c=1,x0=0) = interval(n.c,c,x0),c*profile(n.c),chord(n.c),c*profile(n.t)
+
+# Rotated thickness by camber slope
+
+"""
+    American{C,T,P} <: Airfoil
+
+Thickness measured perpendicular to the camber line, American convention.
+"""
+struct American{C,T,P} <: Airfoil{P}
+    c::C
+    t::T
+    @pure American{C,T,P}(c,t) where {C,T,P} = new{C,T,P}(c,t)
+end
+
+@pure American{n,p}() where {n,p} = American(Camber{Int(n÷100),p}(),ClarkY{n%100,p}())
+@pure American(c::C,t::T) where {C<:Profile{P},T<:Profile{P}} where P = American{C,T,2P-2}(c,t)
+
+upper(n::American,c=1,x0=0) = upper(getprofiles(n,c,x0)...)
+lower(n::American,c=1,x0=0) = lower(getprofiles(n,c,x0)...)
+upperlower(n::American,c=1,x0=0) = upperlower(getprofiles(n,c,x0)...)
+getprofiles(n::American,c=1,x0=0) = interval(n.c,c,x0),c*profile(n.c),profileslope(n.c),c*profile(n.t)
+
+# NACA specification selection
+
+macro NACA_str(n)
+    p = 150
+    n5 = match(r"(\d{2}[01])(\d{2}(?>\.\d+)?)(?:-)?(?(?<=-)(\d{2}(?>\.\d+)?))?",n)
+    n4 = match(r"(\d{2})(\d{2}(?>\.\d+)?)(?:-)?(?(?<=-)(\d{2}(?>\.\d+)?))?",n)
+    n16 = match(r"1(\d)(?>-)(?:\((?=\d(?>\.\d+)?\)))?(\d(?>\.\d+)?)(?:(?<=\d)\))?(?:\((?=\d{2}(?>\.\d+)?\)))?(\d{2}(?>\.\d+)?)(?:(?<=\d)\))?",n)
+    n6A = match(r"6(\d)(?>A)(?:\((?=\d(?>\.\d+)?\)))?(\d(?>\.\d+)?)(?:(?<=\d)\))?(?:\((?=\d{2}(?>\.\d+)?\)))?(\d{2}(?>\.\d+)?)(?:(?<=\d)\))?",n)
+    if !isnothing(n5)
+        British(NACA5{Meta.parse(n5[1]),p}(),isnothing(n5[3]) ? ClarkY{Meta.parse(n5[2]),p}() : Modified{Meta.parse(n5[2]),Meta.parse(n5[3]),p}())
+    elseif !isnothing(n4)
+        American(NACA4{Meta.parse(n4[1]),p}(),isnothing(n4[3]) ? ClarkY{Meta.parse(n4[2]),p}() : Modified{Meta.parse(n4[2]),Meta.parse(n4[3]),p}())
+    elseif !isnothing(n16)
+        American(NACA6{Meta.parse(n16[2]),p}(),Modified{Meta.parse(n16[1]),Meta.parse(n16[3]),p}())
+    elseif !isnothing(n6A)
+         American(NACA6A{Meta.parse(n6A[2]),p}(),Modified{Meta.parse(n6A[1]),Meta.parse(n6A[3]),p}())
+    else
+        throw(error("not valid"))
+    end
+end
 
 # Joukowski
 
@@ -93,7 +153,6 @@ end
 joukowski(R,f,g,b,p) = Joukowski{R,f,g,b,p}()
 
 function Base.complex(::Joukowski{R,f,g,b,p}) where {R,f,g,b,p}
-    θ = range(0,2π,length=2p-1)
-    z = R*cis.(θ).-(f-g*im)
-    z.+b^2*inv.(z)
+    z = R*cis.(interval(2p-1,2π)).-(f-g*im)
+    z .+ b^2*inv.(z)
 end
