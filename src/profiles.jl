@@ -2,7 +2,10 @@
 #   This file is part of FlowGeometry.jl. It is licensed under the AGPL license
 #   FlowGeometry Copyright (C) 2020 Michael Reed
 
-approx(x,y) = [x^i for i ∈ 0:length(y)-1]⋅y
+approx(x,y::SVector{N}) where N = poly(x,Val(N))⋅y
+approx(x,y::AbstractVector) where N = [x^i for i ∈ 0:length(y)-1]⋅y
+
+@generated poly(x,::Val{N}) where N = Expr(:call,:SVector,[:(x^$i) for i ∈ 0:N-1]...)
 
 export FlatPlate, ParabolicArc, CircularArc, ClarkY, Thickness, Modified
 export profile, profileslope, profileangle, interval
@@ -12,9 +15,10 @@ export NACA4, NACA5, NACA6, NACA6A
 
 abstract type Profile{P} end
 
-profile(p::T) where T<:Profile = profile.(Ref(p),interval(p))
+profile(p::T) where T<:Profile = p.(interval(p))
 profileslope(p::T) where T<:Profile = profileslope.(Ref(p),interval(p))
 profileangle(p::T) where T<:Profile = atan.(profileslope(p))
+@pure profile(p::T,x) where T<:Profile = p(x)
 @pure profile(p::T,x,c,x0=0) where T<:Profile = profile(p,(x-x0)/c)*c
 @pure profileslope(p::T,x,c,x0=0) where T<:Profile = profileslope(p,(x-x0)/c)
 @pure profileangle(p::T,x,c,x0=0) where T<:Profile = atan(profileslope(p,x,c,x0))
@@ -24,13 +28,22 @@ function points(N::A,c=1,x0=0) where A<:Profile{p} where p
     Chain{SubManifold(ℝ^3),1}.(1.0,interval(N,c,x0),profile(N))
 end
 
+const AppendixI = [0,.005,.0125,.025,.05,.075,.1,.15,.2,.25,.3,.4,.5,.6,.7,.8,.9,.95,1]
+const AppendixII = [0,.005,0.0075,.0125,.025,.05,.075,.1,.15,.2,.25,.3,.35,.4,.45,.5,.55,.6,.65,.7,.75,.8,.85,.9,.95,1]
+
+Base.adjoint(n::P) where P<:Profile = Adjoint(n)
+(n::LinearAlgebra.Adjoint{Any,<:Profile})(x) = profileslope(n.parent,x)
+(n::LinearAlgebra.Adjoint{Any,<:Profile})(x,c,x0=0) = profileslope(n.parent,x,c,x0)
+
 # flat plate
 
 struct FlatPlate{p} <: Profile{p}
     @pure FlatPlate{p}() where p = new{p}()
 end
 
-@pure profile(::FlatPlate,x,c=nothing,x0=nothing) = 0.0
+@pure (::FlatPlate)(x) = 0.0
+@pure (n::FlatPlate)(x,c,x0=0)  = profile(n,x,c,x0)
+@pure profile(::FlatPlate,x,c,x0=nothing) = 0.0
 @pure profileslope(::FlatPlate,x,c=nothing,x0=nothing) = 0.0
 @pure profile(f::FlatPlate{p}) where p = range(0,0,length=p)
 @pure profileslope(f::FlatPlate) = profile(f)
@@ -42,7 +55,8 @@ struct ParabolicArc{t,p} <: Profile{p}
     @pure ParabolicArc{p}() where p = new{6,p}()
 end
 
-@pure profile(::ParabolicArc{t},x) where t = (x<0 || x>1) ? 0.0 : (t/25)*x*(1-x)
+(n::ParabolicArc)(x,c,x0=0)  = profile(n,x,c,x0)
+@pure (::ParabolicArc{t})(x) where t = (x<0 || x>1) ? 0.0 : (t/25)*x*(1-x)
 @pure profileslope(::ParabolicArc{t},x) where t = (x<0 || x>1) ? 0.0 : (1-2x)*t/400
 
 # circular arc
@@ -52,7 +66,8 @@ struct CircularArc{t,p} <: Profile{p}
     @pure CircularArc{p}() where p = new{6,p}()
 end
 
-@pure function profile(::CircularArc{T},x) where T
+(n::CircularArc)(x,c,x0=0)  = profile(n,x,c,x0)
+@pure function (::CircularArc{T})(x) where T
     (x<0 || x>1) && return 0.0
     t = T/100; r = (t+1/4t)/2
     r*(sin(acos((x-1/2)/r))-1)+t
@@ -72,15 +87,13 @@ profileslope(P::CircularArc,x::Chain,c,x0=0) = profileslope(P,x[2],c,x0)
 # NACA Clark Y
 # http://naca.central.cranfield.ac.uk/reports/1933/naca-report-431.pdf
 
-struct ClarkY{t,p} <: Profile{p}
-    @pure ClarkY{t,p}() where {t,p} = new{t,p}()
+struct ClarkY{t,te,p} <: Profile{p}
+    @pure ClarkY{t,te,p}() where {t,te,p} = new{t,te,p}()
+    @pure ClarkY{t,p}() where {t,p} = ClarkY{t,0.21,p}()
 end
-
-const ℝ5 = SubManifold(ℝ^5)
 
 @pure Y(x) = Chain{ℝ5,1}(sqrt(x),x,x^2,x^3,x^4)
 @pure dY(x) = Chain{ℝ5,1}(0.5/sqrt(x),1.0,2x,3x^2,4x^3)
-const _clarky = Chain{ℝ5,1}(0.2969,-0.1260,-0.3515,0.2843,-0.1036)
 
 @pure function thickness(x,a,t)
     (x<0 || x>1) ? 0.0 : 5t*(Y(x)⋅a)[1]
@@ -89,8 +102,12 @@ end # thickness distribution
     (x<0 || x>1) ? 0.0 : 5t*(dY(x)⋅a)[1]
 end # thickness distribution slope
 
-@pure profile(::ClarkY{t},x) where t = thickness(x,_clarky,t/100)
-@pure profileslope(::ClarkY{t},x) where t = thickness_slope(x,_clarky,t/100)
+@pure clarky(te=0.0021) = Chain{ℝ5,1}(0.2969,-0.1260,-0.3516+1e-16,0.2843,te-0.1036)
+@pure radius(t,::Val{a0}=Val(clarky()[1])) where a0 = t^2*((a0/0.2)^2/2)
+
+(n::ClarkY)(x,c,x0=0)  = profile(n,x,c,x0)
+@pure (::ClarkY{t,te})(x) where {t,te} = thickness(x,clarky(te/100),t/100)
+@pure profileslope(::ClarkY{t,te},x) where {t,te} = thickness_slope(x,clarky(te/100),t/100)
 
 # NACA 4-series thickness
 # https://ntrs.nasa.gov/archive/nasa/casi.ntrs.nasa.gov/19930091108.pdf
@@ -102,29 +119,25 @@ struct Thickness{t,x,te,p} <: Profile{p}
 end
 
 #[0.2,0.3,0.4,0.5,0.6] -> -[0.2,0.234,0.315,0.465,0.7]
-@pure tailslope(x) = -approx(x,[31/200,151/300,-109/40,43/6,-5/2])
+@pure tailslope(x) = -approx(x,SVector(31/200,151/300,-109/40,43/6,-5/2))
 @pure riegel(x) = -(2.24-5.42x+12.3x^2)/(10(1-0.878x))
 
-@pure function clarky(x=0.3,te=0.002,ts=tailslope(x),n=0.1,y=0.078)
+@pure function clarky(te,x,ts=tailslope(x),n=0.1,y=0.078) # te,x = 0.002,0.3
     transpose(Chain{ℝ5,1}(Y(x),dY(x),Y(1.0),dY(1.0),Y(n)))\Chain{ℝ5,1}(0.1,0.0,te,ts,y)
 end
 
-@pure @generated profile(::Thickness{t,m,te},x) where {t,m,te} = :(thickness(x,$(clarky(m/10,te/100)),$(t/100)))
-@pure @generated profileslope(::Thickness{t,m,te},x) where {t,m,te} = :(thickness_slope(x,$(clarky(m/10,te/100)),$(t/100)))
+(n::Thickness)(x,c,x0=0)  = profile(n,x,c,x0)
+@pure @generated (::Thickness{t,m,te})(x) where {t,m,te} = :(thickness(x,$(clarky(te/100,m/10)),$(t/100)))
+@pure @generated profileslope(::Thickness{t,m,te},x) where {t,m,te} = :(thickness_slope(x,$(clarky(te/100,m/10)),$(t/100)))
 
 # NACA mofified thickness
 # http://naca.central.cranfield.ac.uk/reports/1935/naca-report-492.pdf
 
-struct Modified{t,m,p} <: Profile{p}
-    @pure Modified{t,m,p}() where {t,m,p} = new{t,m,p}()
-    @pure Modified{t,p}() where {t,p} = new{t,63,p}()
+struct Modified{t,m,te,p} <: Profile{p}
+    @pure Modified{t,m,te,p}() where {t,m,te,p} = new{t,m,te,p}()
+    @pure Modified{t,m,p}() where {t,m,p} = new{t,m,0.2,p}()
+    @pure Modified{t,p}() where {t,p} = Modified{t,63,p}()
 end
-
-@pure function modified(::Modified{t,m}) where {t,m}
-    i = Int(m÷10); t/100,i≠9 ? i : 6sqrt(3),(m%10)/10
-end
-
-const ℝ4 = SubManifold(ℝ^4)
 
 @pure D(x) = (x1 = 1-x; Chain{ℝ4,1}(1.0,x1,x1^2,x1^3))
 @pure dD(x) =  (x1 = x-1; Chain{ℝ4,1}(0.0,-1.0,2x1,-3x1^2))
@@ -134,20 +147,23 @@ const ℝ4 = SubManifold(ℝ^4)
 @pure dA(x) =  Chain{ℝ4,1}(0.5/sqrt(x),1.0,2x,3x^2)
 @pure ddA(x) =  Chain{ℝ4,1}(-1/(4x*sqrt(x)),0.0,2.0,6x)
 
-@pure radius(t,::Val{a0}=Val(_clarky[1])) where a0 = t^2*((a0/0.2)^2/2)
-
 @pure function modified(t,i,x,te=0.002,ts=tailslope(x))
     d = transpose(Chain{ℝ4,1}(D(x),dD(x),D(1.0),dD(1.0)))\Chain{ℝ4,1}(0.1,0.0,te,ts)
     a = transpose(Chain{ℝ4,1}(A(x),dA(x),ddA(x),Chain{ℝ4,1}(1.0,1.0,1.0,1.0)))
     return a\Chain{ℝ4,1}(0.1,0.0,(ddD(x)⋅d)[1],(1/5t)*sqrt(2radius(0.2*i/6))),d
 end
 
-@pure function profile(P::Modified,x)
-    t,i,p = modified(P); a = modified(t,i,p)
+@pure function modified(::Modified{t,m,te}) where {t,m,te}
+    i = Int(m÷10); t/100,i≠9 ? i : 6sqrt(3),(m%10)/10,te/100
+end
+
+(n::Modified)(x,c,x0=0)  = profile(n,x,c,x0)
+@pure function (P::Modified)(x)
+    t,i,p,te = modified(P); a = modified(t,i,p,te)
     (x<0 || x>1) ? 0.0 : 5t*(x < p ? A(x)⋅a[1] : D(x)⋅a[2])[1]
 end
 @pure function profileslope(P::Modified,x)
-    t,i,p = modified(P); a = modified(t,i,p)
+    t,i,p,te = modified(P); a = modified(t,i,p,te)
     (x<0 || x>1) ? 0.0 : 5t*(x < p ? dA(x)⋅a[1] : dD(x)⋅a[2])[1]
 end
 
@@ -158,14 +174,6 @@ struct NACA4{n,p} <: Profile{p}
     @pure NACA4{n,p}() where {n,p} = new{n,p}()
 end
 
-@pure function naca4(n) # decode
-    ns = string(n,pad=2)
-    M,P = parse.(Int,(ns[1],ns[2]))
-    return M/100,P/10
-end
-
-const ℝ3 = SubManifold(ℝ^3)
-
 @pure C(x) = Chain{ℝ3,1}(1.0,x,x^2)
 @pure dC(x) = Chain{ℝ3,1}(0.0,1.0,2x)
 
@@ -175,7 +183,14 @@ const ℝ3 = SubManifold(ℝ^3)
     transpose(Chain{ℝ3,1}(y,dy,C(1.0)))\cm
 end
 
-@pure function profile(::NACA4{n},x) where n
+@pure function naca4(n) # decode
+    ns = string(n,pad=2)
+    M,P = parse.(Int,(ns[1],ns[2]))
+    return M/100,P/10
+end
+
+(n::NACA4)(x,c,x0=0)  = profile(n,x,c,x0)
+@pure function (::NACA4{n})(x) where n
     (x<0 || x>1) && (return 0.0)
     m,p = naca4(n)
     (C(x)⋅naca4(m,p)[x < p ? 1 : 2])[1]
@@ -200,22 +215,23 @@ end
     r,k1,k1k2 = if !Bool(R)
         #p: [0.05,0.1,0.15,0.2,0.25]
         #m: p -> [0.058,0.126,0.2025,0.29,0.391]
-        approx(p,[-1/250,359/300,7/10,10/3,0]),
+        approx(p,SVector(-1/250,359/300,7/10,10/3,0)),
         #k: p -> [361.4,51.64,15.957,6.643,3.230]
-        approx(p,[284037/200,-3296847/100,4296829/15,-1087744,4544800/3]),0
+        approx(p,SVector(284037/200,-3296847/100,4296829/15,-1087744,4544800/3)),0
     else # reflexed
         #p: [0.1,0.15,0.2,0.25]
         #m: p -> [0.13,0.217,0.318,0.441]
-        approx(p,[17/500,26/15,-2,32/3]),
+        approx(p,SVector(17/500,26/15,-2,32/3)),
         #k: p -> [51.99,15.793,6.52,3.191]
-        approx(p,[72269/250,-583261/150,89864/5,83920/3]),
+        approx(p,SVector(72269/250,-583261/150,89864/5,83920/3)),
         #k/k: p-> [0.000764,0.00677,0.0303,0.1355]
-        approx(p,[10763/50000,12081/25000,-87457/2500,10691/125])
+        approx(p,SVector(10763/50000,12081/25000,-87457/2500,10691/125))
     end
     return m*k1,r,k1k2
 end
 
-@pure function profile(::NACA5{n},x) where n
+(n::NACA5)(x,c,x0=0)  = profile(n,x,c,x0)
+@pure function (::NACA5{n})(x) where n
     (x<0 || x>1) && (return 0.0)
     mk1,p,k1k2 = naca5(n)
     mk1*(p^3*(1-x)+(if x < p
@@ -244,13 +260,6 @@ struct NACA6{c,n,p} <: Profile{p}
     @pure NACA6{c,p}() where {c,p} = NACA6{p}(SVector(1.0),SVector(c/10))
 end # angle of attack: αᵢ = Cla*h
 
-@pure function naca6(n::NACA6) # decode
-    a1 = 1.0.-n.a; a12 = (a1.^2)./2
-    g = .-((n.a.^2).*(log.(n.a)./2.0.-1/4).+1/4)./a1
-    h = (a12.*log.(a1).-a12./2)./a1 .+ g
-    #h = a1.*(log.(a1)./2.0.-1/4) .+ g
-    return n.Cl./(2π.*(1.0.+n.a)),n.a,h,g
-end
 @pure function naca6(x,a,g,h)
     x1 = 1 - x
     if a == 1.0
@@ -270,7 +279,16 @@ end
     end
 end
 
-@pure function profile(n::NACA6,x)
+@pure function naca6(n::NACA6) # decode
+    a1 = 1.0.-n.a; a12 = (a1.^2)./2
+    g = .-((n.a.^2).*(log.(n.a)./2.0.-1/4).+1/4)./a1
+    h = (a12.*log.(a1).-a12./2)./a1 .+ g
+    #h = a1.*(log.(a1)./2.0.-1/4) .+ g
+    return n.Cl./(2π.*(1.0.+n.a)),n.a,h,g
+end
+
+(n::NACA6)(x,c,x0=0)  = profile(n,x,c,x0)
+@pure function (n::NACA6)(x)
     (x<1e-7 || x>1-1e-7) && (return 0.0)
     Cla,a,g,h = naca6(n)
     sum(Cla.*naca6.(x,a,g,h))
@@ -288,7 +306,8 @@ struct NACA6A{c,p} <: Profile{p}
     @pure NACA6A{c,p}() where {c,p} = new{c,p}()
 end
 
-@pure function profile(::NACA6A{c},x) where c
+(n::NACA6A)(x,c,x0=0)  = profile(n,x,c,x0)
+@pure function (::NACA6A{c})(x) where c
     (x<0 || x>1) && (return 0.0)
     (c/36π)*(if x < 0.87437
         sum.(naca6(x,0.8,SVector(0),SVector(0)))

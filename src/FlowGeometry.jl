@@ -3,7 +3,7 @@ module FlowGeometry
 #   This file is part of FlowGeometry.jl. It is licensed under the AGPL license
 #   FlowGeometry Copyright (C) 2020 Michael Reed
 
-using Requires, StaticArrays, Grassmann, Adapode
+using Requires, AbstractTensors, DirectSum, Grassmann, Adapode, LinearAlgebra
 
 import Grassmann: points, edges, initpoints, initedges
 import Base: @pure
@@ -59,7 +59,7 @@ end
 
 export rectangletriangle, rectangletriangles, FittedPoint
 
-rectangletriangle(i,m,p) = triangle(((i-1)%(2(m-1)))+1,((i-1)÷(2(m-1)))+1,m,p)
+rectangletriangle(i,m,p) = rectangletriangle(((i-1)%(2(m-1)))+1,((i-1)÷(2(m-1)))+1,m,p)
 rectangletriangle(i,j,m,p) = (k=(j-1)*m+(i÷2)+1;n=m+k;Chain{p,1}(isodd(i) ? SVector(k,n,k+1) : SVector(k,n-1,n)))
 #rectangletriangle(i,j,m,p) = (k=(j-1)*m+(i÷2)+1;n=m+k;Chain{p,1}(iseven(i) ? SVector(k,n,n+1) : SVector(k,k-1,n)))
 
