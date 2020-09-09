@@ -60,8 +60,8 @@ end
 export rectangletriangle, rectangletriangles, FittedPoint
 
 rectangletriangle(i,m,p) = rectangletriangle(((i-1)%(2(m-1)))+1,((i-1)÷(2(m-1)))+1,m,p)
-rectangletriangle(i,j,m,p) = (k=(j-1)*m+(i÷2)+1;n=m+k;Chain{p,1}(isodd(i) ? SVector(k,n,k+1) : SVector(k,n-1,n)))
-#rectangletriangle(i,j,m,p) = (k=(j-1)*m+(i÷2)+1;n=m+k;Chain{p,1}(iseven(i) ? SVector(k,n,n+1) : SVector(k,k-1,n)))
+rectangletriangle(i,j,m,p) = (k=(j-1)*m+(i÷2)+1;n=m+k;Chain{p,1}(isodd(i) ? Values(k,n,k+1) : Values(k,n-1,n)))
+#rectangletriangle(i,j,m,p) = (k=(j-1)*m+(i÷2)+1;n=m+k;Chain{p,1}(iseven(i) ? Values(k,n,n+1) : Values(k,k-1,n)))
 
 rectangletriangles(p,m=51,JL=51) = [rectangletriangle(i,JL,p) for i ∈ 1:2*(m-1)*(JL-1)]
 rectanglebounds(n=51,JL=51) = [1:JL:JL*n; JL*(n-1)+2:JL*n; JL*(n-1):-JL:JL; JL-1:-1:2]
@@ -117,20 +117,20 @@ export icosahedron, cube, box, sphere
 
 square(x) = square(-x,x)
 square(xn,xm) = rectangle(xn,xm,xn,xm)
-rectangle(xn,xm,yn,ym) = Chain{SubManifold(ℝ^3),1}.(SVector{3,Float64}.(
+rectangle(xn,xm,yn,ym) = Chain{SubManifold(ℝ^3),1}.(Values{3,Float64}.(
     [(1.0,xn, yn), (1.0,xm, yn),
      (1.0,xm, ym), (1.0,xn, ym)]))
 
 cube(x) = cube(-x,x)
 cube(xn,xm) = box(xn,xm,xn,xm,xn,xm)
-box(xn,xm,yn,ym,zn,zm) = Chain{SubManifold(ℝ^4),1}.(SVector{4,Float64}.(
+box(xn,xm,yn,ym,zn,zm) = Chain{SubManifold(ℝ^4),1}.(Values{4,Float64}.(
     [(1.0,xn, yn, zn), (1.0,xm, yn, zn),
      (1.0,xm, ym, zn), (1.0,xn, ym, zn),
      (1.0,xn, yn, zm), (1.0,xm, yn, zm),
      (1.0,xm, ym, zm), (1.0,xn, ym, zm)]))
 
 icosahedron(a=1,b=a*Irrational{:φ}()) =
-    Chain{SubManifold(ℝ^4),1}.(SVector.(
+    Chain{SubManifold(ℝ^4),1}.(Values.(
      [(1,0,a,b),(1,b,0,a),(1,a,b,0),
       (1,0,a,-b),(1,-b,0,a),(1,a,-b,0),
       (1,0,-a,b),(1,b,0,-a),(1,-a,b,0),

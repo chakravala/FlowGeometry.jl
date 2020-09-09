@@ -8,12 +8,7 @@ AbstractTensors = "a8e43f4a-99b7-5565-8bf1-0165161caaea"
 DirectSum = "22fd7b30-a8c0-5bf2-aabe-97783860d07c"
 Grassmann = "4df31cd9-4c27-5bea-88d0-e6a7146666d8"
 Adapode = "0750cfb5-909a-49d7-927e-29b6595444bf"
-PyPlot = "d330b81b-6aea-500a-939a-2ce795aea3ee"
-LightGraphs = "093fc24a-ae57-5d10-9952-331d41423f4d"
-GraphPlot = "a2cc645c-3eea-5389-862e-a155d0052231"
-Compose = "a81c6b42-2e10-5240-aca2-a61377ecd94b"
 Requires = "ae029012-a4dd-5104-9daa-d747884805df"
-StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
 
 [extras]

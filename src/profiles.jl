@@ -2,10 +2,10 @@
 #   This file is part of FlowGeometry.jl. It is licensed under the AGPL license
 #   FlowGeometry Copyright (C) 2020 Michael Reed
 
-approx(x,y::SVector{N}) where N = poly(x,Val(N))⋅y
+approx(x,y::Values{N}) where N = poly(x,Val(N))⋅y
 approx(x,y::AbstractVector) where N = [x^i for i ∈ 0:length(y)-1]⋅y
 
-@generated poly(x,::Val{N}) where N = Expr(:call,:SVector,[:(x^$i) for i ∈ 0:N-1]...)
+@generated poly(x,::Val{N}) where N = Expr(:call,:Values,[:(x^$i) for i ∈ 0:N-1]...)
 
 export FlatPlate, ParabolicArc, CircularArc, ClarkY, Thickness, Modified
 export profile, profileslope, profileangle, interval
@@ -119,7 +119,7 @@ struct Thickness{t,x,te,p} <: Profile{p}
 end
 
 #[0.2,0.3,0.4,0.5,0.6] -> -[0.2,0.234,0.315,0.465,0.7]
-@pure tailslope(x) = -approx(x,SVector(31/200,151/300,-109/40,43/6,-5/2))
+@pure tailslope(x) = -approx(x,Values(31/200,151/300,-109/40,43/6,-5/2))
 @pure riegel(x) = -(2.24-5.42x+12.3x^2)/(10(1-0.878x))
 
 @pure function clarky(te,x,ts=tailslope(x),n=0.1,y=0.078) # te,x = 0.002,0.3
@@ -215,17 +215,17 @@ end
     r,k1,k1k2 = if !Bool(R)
         #p: [0.05,0.1,0.15,0.2,0.25]
         #m: p -> [0.058,0.126,0.2025,0.29,0.391]
-        approx(p,SVector(-1/250,359/300,7/10,10/3,0)),
+        approx(p,Values(-1/250,359/300,7/10,10/3,0)),
         #k: p -> [361.4,51.64,15.957,6.643,3.230]
-        approx(p,SVector(284037/200,-3296847/100,4296829/15,-1087744,4544800/3)),0
+        approx(p,Values(284037/200,-3296847/100,4296829/15,-1087744,4544800/3)),0
     else # reflexed
         #p: [0.1,0.15,0.2,0.25]
         #m: p -> [0.13,0.217,0.318,0.441]
-        approx(p,SVector(17/500,26/15,-2,32/3)),
+        approx(p,Values(17/500,26/15,-2,32/3)),
         #k: p -> [51.99,15.793,6.52,3.191]
-        approx(p,SVector(72269/250,-583261/150,89864/5,83920/3)),
+        approx(p,Values(72269/250,-583261/150,89864/5,83920/3)),
         #k/k: p-> [0.000764,0.00677,0.0303,0.1355]
-        approx(p,SVector(10763/50000,12081/25000,-87457/2500,10691/125))
+        approx(p,Values(10763/50000,12081/25000,-87457/2500,10691/125))
     end
     return m*k1,r,k1k2
 end
@@ -254,10 +254,10 @@ end
 # https://ntrs.nasa.gov/archive/nasa/casi.ntrs.nasa.gov/19930091610.pdf
 
 struct NACA6{c,n,p} <: Profile{p}
-    a::SVector{n,Float64}
-    Cl::SVector{n,Float64}
+    a::Values{n,Float64}
+    Cl::Values{n,Float64}
     @pure NACA6{p}(a,Cl) where p = new{10sum(Cl),length(Cl),p}(a,Cl)
-    @pure NACA6{c,p}() where {c,p} = NACA6{p}(SVector(1.0),SVector(c/10))
+    @pure NACA6{c,p}() where {c,p} = NACA6{p}(Values(1.0),Values(c/10))
 end # angle of attack: αᵢ = Cla*h
 
 @pure function naca6(x,a,g,h)
@@ -310,12 +310,12 @@ end
 @pure function (::NACA6A{c})(x) where c
     (x<0 || x>1) && (return 0.0)
     (c/36π)*(if x < 0.87437
-        sum.(naca6(x,0.8,SVector(0),SVector(0)))
+        sum.(naca6(x,0.8,Values(0),Values(0)))
     else # (0.0302164,-0.245209)/2π(1+a)
         0.34173943292855025-2.773248454778759(x-0.87437)
     end)
 end
 @pure function profileslope(::NACA6A{c},x) where c
     (x<0 || x>1) && (return 0.0)
-    x < 0.87437 ? (c/36π)*sum.(naca6(x,0.8,SVector(0))) : -0.0245209c
+    x < 0.87437 ? (c/36π)*sum.(naca6(x,0.8,Values(0))) : -0.0245209c
 end
