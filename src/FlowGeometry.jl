@@ -171,40 +171,40 @@ end
 # init
 
 function __init__()
-    @require AbstractPlotting="537997a7-5e4e-5d89-9595-2241ea00577e" begin
-        function AbstractPlotting.plot(N::Profile,args...)
-            AbstractPlotting.plot(interval(N),profile(N),args...)
+    @require Makie="ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a" begin
+        function Makie.plot(N::Profile,args...)
+            Makie.plot(interval(N),profile(N),args...)
         end
-        function AbstractPlotting.plot!(N::Profile,args...)
-            AbstractPlotting.plot!(interval(N),profile(N),args...)
+        function Makie.plot!(N::Profile,args...)
+            Makie.plot!(interval(N),profile(N),args...)
         end
-        function AbstractPlotting.plot(N::Airfoil,args...)
-            AbstractPlotting.lines(N,args...)
-            AbstractPlotting.plot!(N.c,args...)
+        function Makie.plot(N::Airfoil,args...)
+            Makie.lines(N,args...)
+            Makie.plot!(N.c,args...)
         end
-        function AbstractPlotting.plot!(N::Airfoil,args...)
-            AbstractPlotting.lines!(N,args...)
-            AbstractPlotting.plot!(N.c,args...)
+        function Makie.plot!(N::Airfoil,args...)
+            Makie.lines!(N,args...)
+            Makie.plot!(N.c,args...)
         end
-        function AbstractPlotting.lines(N::Airfoil,args...)
+        function Makie.lines(N::Airfoil,args...)
             P = complex(N)
-            AbstractPlotting.lines([real.(P) imag.(P)],args...)
+            Makie.lines([real.(P) imag.(P)],args...)
         end
-        function AbstractPlotting.lines!(N::Airfoil,args...)
+        function Makie.lines!(N::Airfoil,args...)
             P = complex(N)
-            AbstractPlotting.lines!([real.(P) imag.(P)],args...)
+            Makie.lines!([real.(P) imag.(P)],args...)
         end
-        function AbstractPlotting.plot(N::DoubleArc,args...)
+        function Makie.plot(N::DoubleArc,args...)
             U,L = upperlower(N)
-            AbstractPlotting.plot(real.(U),imag.(U),args...)
-            length(U)==length(L) && AbstractPlotting.plot!(real.(U),(imag.(U).+imag.(L))./2,args...)
-            AbstractPlotting.plot!(real.(L),imag.(L),args...)
+            Makie.plot(real.(U),imag.(U),args...)
+            length(U)==length(L) && Makie.plot!(real.(U),(imag.(U).+imag.(L))./2,args...)
+            Makie.plot!(real.(L),imag.(L),args...)
         end
-        function AbstractPlotting.plot!(N::DoubleArc,args...)
+        function Makie.plot!(N::DoubleArc,args...)
             U,L = upperlower(N)
-            AbstractPlotting.plot!(real.(U),imag.(U),args...)
-            length(U)==length(L) && AbstractPlotting.plot!(real.(U),(imag.(U).+imag.(L))./2,args...)
-            AbstractPlotting.plot!(real.(L),imag.(L),args...)
+            Makie.plot!(real.(U),imag.(U),args...)
+            length(U)==length(L) && Makie.plot!(real.(U),(imag.(U).+imag.(L))./2,args...)
+            Makie.plot!(real.(L),imag.(L),args...)
         end
     end
     @require UnicodePlots="b8865327-cd53-5732-bb35-84acbb429228" begin
