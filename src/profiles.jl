@@ -1,9 +1,19 @@
 
-#   This file is part of FlowGeometry.jl. It is licensed under the AGPL license
+#   This file is part of FlowGeometry.jl
+#   It is licensed under the AGPL license
 #   FlowGeometry Copyright (C) 2020 Michael Reed
+#       _           _                         _
+#      | |         | |                       | |
+#   ___| |__   __ _| | ___ __ __ ___   ____ _| | __ _
+#  / __| '_ \ / _` | |/ / '__/ _` \ \ / / _` | |/ _` |
+# | (__| | | | (_| |   <| | | (_| |\ V / (_| | | (_| |
+#  \___|_| |_|\__,_|_|\_\_|  \__,_| \_/ \__,_|_|\__,_|
+#
+#   https://github.com/chakravala
+#   https://crucialflow.com
 
 approx(x,y::Values{N}) where N = poly(x,Val(N))⋅y
-approx(x,y::AbstractVector) where N = [x^i for i ∈ 0:length(y)-1]⋅y
+approx(x,y::AbstractVector) = [x^i for i ∈ 0:length(y)-1]⋅y
 
 @generated poly(x,::Val{N}) where N = Expr(:call,:Values,[:(x^$i) for i ∈ 0:N-1]...)
 
@@ -25,7 +35,7 @@ profileangle(p::T) where T<:Profile = atan.(profileslope(p))
 @pure interval(::P,c=1,x0=0) where P<:Profile{p} where p = interval(p,c,x0)
 @pure interval(p::Int,c=1,x0=0) = range(x0,c,length=p)
 function points(N::A,c=1,x0=0) where A<:Profile{p} where p
-    Chain{SubManifold(ℝ^3),1}.(1.0,interval(N,c,x0),profile(N))
+    Chain{Submanifold(ℝ^3),1}.(1.0,interval(N,c,x0),profile(N))
 end
 
 const AppendixI = [0,.005,.0125,.025,.05,.075,.1,.15,.2,.25,.3,.4,.5,.6,.7,.8,.9,.95,1]

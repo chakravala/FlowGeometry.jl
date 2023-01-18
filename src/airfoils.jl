@@ -1,11 +1,28 @@
 
-#   This file is part of FlowGeometry.jl. It is licensed under the AGPL license
+#   This file is part of FlowGeometry.jl
+#   It is licensed under the AGPL license
 #   FlowGeometry Copyright (C) 2020 Michael Reed
+#       _           _                         _
+#      | |         | |                       | |
+#   ___| |__   __ _| | ___ __ __ ___   ____ _| | __ _
+#  / __| '_ \ / _` | |/ / '__/ _` \ \ / / _` | |/ _` |
+# | (__| | | | (_| |   <| | | (_| |\ V / (_| | | (_| |
+#  \___|_| |_|\__,_|_|\_\_|  \__,_| \_/ \__,_|_|\__,_|
+#
+#   https://github.com/chakravala
+#   https://crucialflow.com
 
 abstract type Airfoil{p} end
 
 export Airfoil, UpperArc, LowerArc, SymmetricArc, DoubleArc, @NACA_str, Joukowski
 export upper, lower, upperlower, American, British
+
+struct Chord{p,c,x0}
+    @pure Chord{p,c,x0}() where {p,c,x0} = new{p,c,x0}()
+    @pure Chord{p,c}() where {p,c} = new{p,c,0}()
+    @pure Chord{p}() where p = Chord{p,1}()
+    @pure Chord(p=150,c=1,x0=0) = new{p,c,x0}()
+end
 
 # Airfoils upper lower
 
@@ -42,7 +59,7 @@ function Base.complex(N::A) where A<:Airfoil
 end
 function points(N::A) where A<:Airfoil
     z = complex(N)[1:end-1]
-    Chain{SubManifold(ℝ^3),1}.(1.0,real.(z),imag.(z))
+    Chain{Submanifold(ℝ^3),1}.(1.0,real.(z),imag.(z))
 end
 
 # SymmetricArc

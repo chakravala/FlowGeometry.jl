@@ -1,7 +1,29 @@
 module FlowGeometry
 
-#   This file is part of FlowGeometry.jl. It is licensed under the AGPL license
+#   This file is part of FlowGeometry.jl
+#   It is licensed under the AGPL license
 #   FlowGeometry Copyright (C) 2020 Michael Reed
+#       _           _                         _
+#      | |         | |                       | |
+#   ___| |__   __ _| | ___ __ __ ___   ____ _| | __ _
+#  / __| '_ \ / _` | |/ / '__/ _` \ \ / / _` | |/ _` |
+# | (__| | | | (_| |   <| | | (_| |\ V / (_| | | (_| |
+#  \___|_| |_|\__,_|_|\_\_|  \__,_| \_/ \__,_|_|\__,_|
+#
+#   https://github.com/chakravala
+#   https://crucialflow.com
+#            ________)
+#           (, /         /)
+#             /___,     //   ____   _
+#          ) /         (/_  (_) (_(/
+#         (_/
+#
+#        _____)
+#      /
+#     /   ___     _  ______    _ _/_  __
+#    /     / )  _(/_(_) // (__(/_(__ / (_  (_/_
+#   (____ /                               .-/
+#                                        (_/
 
 using Requires, AbstractTensors, DirectSum, Grassmann, Adapode, LinearAlgebra
 
@@ -29,7 +51,7 @@ addbound(e,r=rectangle(xn,xm,yn,ym)) = [e;edgeslist!(points(e),r)]
 airfoilbox(n) = addbound(airfoiledges(n),rectangle(xn,xm,yn,ym))
 airfoiledges(n) = edgeslist(ChainBundle(points(n)))
 
-function rectcirc(n,xn,xm,yn,ym,c::Chain{V}=Chain{SubManifold(ℝ^3),1}(1.0,0.0,0.0)) where V
+function rectcirc(n,xn,xm,yn,ym,c::Chain{V}=Chain{Submanifold(ℝ^3),1}(1.0,0.0,0.0)) where V
     x = float.([yn,xm,ym,xn])
     r = rectangle(xn,xm,yn,ym)
     rc = r.-c
@@ -66,7 +88,7 @@ rectangletriangle(i,j,m,p) = (k=(j-1)*m+(i÷2)+1;n=m+k;Chain{p,1}(isodd(i) ? Val
 rectangletriangles(p,m=51,JL=51) = [rectangletriangle(i,JL,p) for i ∈ 1:2*(m-1)*(JL-1)]
 rectanglebounds(n=51,JL=51) = [1:JL:JL*n; JL*(n-1)+2:JL*n; JL*(n-1):-JL:JL; JL-1:-1:2]
 
-FittedPoint(k,JL=51) = Chain{SubManifold(ℝ^3),1}(1.0,(k-1)÷JL,(k-1)%JL)
+FittedPoint(k,JL=51) = Chain{Submanifold(ℝ^3),1}(1.0,(k-1)÷JL,(k-1)%JL)
 
 # Rakich stretch mesh
 
@@ -92,7 +114,7 @@ end
 
 function RakichPoint(k,x,y,s,κ,JL=legnth(y))
     xk,yk = ((k-1)÷JL)+1,((k-1)%JL)+1
-    Chain{SubManifold(ℝ^3),1}(1.0,x[xk],s[xk]≠0 ? Rakich(κ[xk],yk,s[xk],y[end],JL) : y[yk])
+    Chain{Submanifold(ℝ^3),1}(1.0,x[xk],s[xk]≠0 ? Rakich(κ[xk],yk,s[xk],y[end],JL) : y[yk])
 end
 
 function RakichPoints(P::CircularArc{T,m}=CircularArc{6,21}(),D=50,n=51,JL=51) where {T,m}
@@ -117,27 +139,27 @@ export icosahedron, cube, box, sphere
 
 square(x) = square(-x,x)
 square(xn,xm) = rectangle(xn,xm,xn,xm)
-rectangle(xn,xm,yn,ym) = Chain{SubManifold(ℝ^3),1}.(Values{3,Float64}.(
+rectangle(xn,xm,yn,ym) = Chain{Submanifold(ℝ^3),1}.(Values{3,Float64}.(
     [(1.0,xn, yn), (1.0,xm, yn),
      (1.0,xm, ym), (1.0,xn, ym)]))
 
 cube(x) = cube(-x,x)
 cube(xn,xm) = box(xn,xm,xn,xm,xn,xm)
-box(xn,xm,yn,ym,zn,zm) = Chain{SubManifold(ℝ^4),1}.(Values{4,Float64}.(
+box(xn,xm,yn,ym,zn,zm) = Chain{Submanifold(ℝ^4),1}.(Values{4,Float64}.(
     [(1.0,xn, yn, zn), (1.0,xm, yn, zn),
      (1.0,xm, ym, zn), (1.0,xn, ym, zn),
      (1.0,xn, yn, zm), (1.0,xm, yn, zm),
      (1.0,xm, ym, zm), (1.0,xn, ym, zm)]))
 
 icosahedron(a=1,b=a*Irrational{:φ}()) =
-    Chain{SubManifold(ℝ^4),1}.(Values.(
+    Chain{Submanifold(ℝ^4),1}.(Values.(
      [(1,0,a,b),(1,b,0,a),(1,a,b,0),
       (1,0,a,-b),(1,-b,0,a),(1,a,-b,0),
       (1,0,-a,b),(1,b,0,-a),(1,-a,b,0),
       (1,0,-a,-b),(1,-b,0,-a),(1,-a,-b,0)]))
 
 @generated function circlemid(x,r)
-    v = Λ(SubManifold(ℝ^4)).v1
+    v = Λ(Submanifold(ℝ^4)).v1
     :(r*Grassmann.unit(x/2-$v) + $v)
 end
 
