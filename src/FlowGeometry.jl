@@ -25,9 +25,9 @@ module FlowGeometry
 #   (____ /                               .-/
 #                                        (_/
 
-using Requires, AbstractTensors, DirectSum, Grassmann, Adapode, LinearAlgebra
+using Requires, AbstractTensors, DirectSum, Grassmann, Cartan, Adapode, LinearAlgebra
 
-import Grassmann: points, edges, initpoints, initedges
+import Cartan: points, edges, initpoints, initedges
 import Base: @pure
 
 export chord, chordedges, edgeslist, edgeslist!, addbound, airfoilbox, airfoiledges, rectcirc
@@ -272,8 +272,10 @@ function __init__()
         decsg(args...) = MATLAB.mxcall(:decsg,1,args...)
         function decsg(N::Airfoil{pts}) where pts
             P = complex(N)[1:end-1]
-            R = [[3,4,-1,2,2,-1,1,1,-1,-1];zeros(4pts-12)]
-            A = [[2,2pts-2];[real.(P);imag.(P)]]
+            x1,x2,x3,x4 = -1.5,3.5,3.5,-1.5
+            y1,y2,y3,y4 = 1.5,1.5,-1.5,-1.5
+            R = [[3,4,x1,x2,x3,x4,y1,y2,y3,y4];zeros(2pts-8)]
+            A = [[2,pts];[real.(P);imag.(P)]]
             decsg([R A],"R-A","RA")
         end
         export decsg
