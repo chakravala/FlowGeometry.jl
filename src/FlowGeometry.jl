@@ -25,9 +25,9 @@ module FlowGeometry
 #   (____ /                               .-/
 #                                        (_/
 
-using Requires, AbstractTensors, DirectSum, Grassmann, Cartan, Adapode, LinearAlgebra
+using Requires, Grassmann, Cartan, LinearAlgebra
 
-import Cartan: points, edges, initpoints, initedges
+import Cartan: PointCloud, points, edges, initpoints, initedges
 import Base: @pure
 
 export chord, chordedges, edgeslist, edgeslist!, addbound, airfoilbox, airfoiledges, rectcirc
@@ -36,20 +36,20 @@ include("profiles.jl")
 include("airfoils.jl")
 
 initpoints(N::A) where A<:Profile{p} where p = initpoints(interval(N))
-initedges(N::A) where A<:Profile{P} where P = initedges(ChainBundle(initpoints(N)))
+initedges(N::A) where A<:Profile{P} where P = initedges(PointCloud(initpoints(N)))
 
-function edgeslist(p::ChainBundle)
-    Chain{p(2,3),1}.(1:length(p),[2:length(p);1])
+function edgeslist(p::PointCloud)
+    Values{2,Int}.(1:length(p),[2:length(p);1])
 end
 function edgeslist!(p,r)
     l,n = length(p),length(r)
-    push!(value(p),r...)
-    Chain{p(2,3),1}.(l+1:l+n,l.+[2:n;1])
+    push!(p,r...)
+    Values{2,Int}.(l+1:l+n,l.+[2:n;1])
 end
 
 addbound(e,r=rectangle(xn,xm,yn,ym)) = [e;edgeslist!(points(e),r)]
 airfoilbox(n) = addbound(airfoiledges(n),rectangle(xn,xm,yn,ym))
-airfoiledges(n) = edgeslist(ChainBundle(points(n)))
+airfoiledges(n) = edgeslist(PointCloud(points(n)))
 
 function rectcirc(n,xn,xm,yn,ym,c::Chain{V}=Chain{Submanifold(ℝ^3),1}(1.0,0.0,0.0)) where V
     x = float.([yn,xm,ym,xn])
@@ -82,7 +82,10 @@ end
 export rectangletriangle, rectangletriangles, FittedPoint
 
 rectangletriangle(i,m,p) = rectangletriangle(((i-1)%(2(m-1)))+1,((i-1)÷(2(m-1)))+1,m,p)
-rectangletriangle(i,j,m,p) = (k=(j-1)*m+(i÷2)+1;n=m+k;Chain{p,1}(isodd(i) ? Values(k,n,k+1) : Values(k,n-1,n)))
+function rectangletriangle(i,j,m,p)
+    k=(j-1)*m+(i÷2)+1;n=m+k
+    isodd(i) ? Values(k,n,k+1) : Values(k,n-1,n)
+end
 #rectangletriangle(i,j,m,p) = (k=(j-1)*m+(i÷2)+1;n=m+k;Chain{p,1}(iseven(i) ? Values(k,n,n+1) : Values(k,k-1,n)))
 
 rectangletriangles(p,m=51,JL=51) = [rectangletriangle(i,JL,p) for i ∈ 1:2*(m-1)*(JL-1)]
@@ -127,10 +130,10 @@ function RakichPoints(P::CircularArc{T,m}=CircularArc{6,21}(),D=50,n=51,JL=51) w
 end
 
 function initrakich(P=CircularArc{6,61}(),D=50,n=101,JL=51)
-    p = ChainBundle(RakichPoints(P,D,n,JL))
-    b,V = rectanglebounds(n,JL),p(2,3); push!(b,1)
-    e = ChainBundle(Chain{V,1,Int}.([(b[i],b[i+1]) for i ∈ 1:length(b)-1]))
-    return p,e,ChainBundle(rectangletriangles(p,n))
+    p = PointCloud(RakichPoints(P,D,n,JL))
+    b = rectanglebounds(n,JL); push!(b,1)
+    e = SimplexManifold(Values{2,Int}.([(b[i],b[i+1]) for i ∈ 1:length(b)-1]),length(p))
+    return p,e,SimplexManifold(rectangletriangles(p,n),length(p))
 end
 
 # points
@@ -181,13 +184,6 @@ function sphere(fac::Vector,r=1,p=points(fac))
         push!(out,Chain{M,1}(v3, v4, v5))
     end
     return out
-end
-
-function cubesphere(r=1,c=2)
-    p = ChainBundle(sphere(r))
-    t = sphere(sphere(∂(MiniQhull.delaunay(p)),r),r)
-    push!(value(p),cube(c*r)...)
-    [t;∂(MiniQhull.delaunay(p,length(p)-7:length(p)))]
 end
 
 # init
@@ -267,7 +263,14 @@ function __init__()
         spheremesh() = TetGen.tetrahedralize(cubesphere(),"vpq1.414a0.1";holes=[Point(0.0,0.0,0.0)])
         cubemesh() = TetGen.tetrahedralize(∂(MiniQhull.delaunay(cube(2))), "vpq1.414a0.1")
     end
-    @require MiniQhull="978d7f02-9e05-4691-894f-ae31a51d76ca" begin end
+    @require MiniQhull="978d7f02-9e05-4691-894f-ae31a51d76ca" begin
+        function cubesphere(r=1,c=2)
+            p = PointCloud(sphere(r))
+            t = sphere(sphere(∂(MiniQhull.delaunay(p)),r),r)
+            push!(p,cube(c*r)...)
+            [t;∂(MiniQhull.delaunay(p,length(p)-7:length(p)))]
+        end
+    end
     @require MATLAB="10e44e05-a98a-55b3-a45b-ba969058deb6" begin
         decsg(args...) = MATLAB.mxcall(:decsg,1,args...)
         function decsg(N::Airfoil{pts}) where pts
