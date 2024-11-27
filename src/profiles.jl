@@ -25,8 +25,14 @@ export NACA4, NACA5, NACA6, NACA6A
 
 abstract type Profile{P} end
 
-profile(p::T) where T<:Profile = p.(interval(p))
-profileslope(p::T) where T<:Profile = profileslope.(Ref(p),interval(p))
+function profile(p::T) where T<:Profile
+    int = interval(p)
+    TensorField(int,p.(int))
+end
+function profileslope(p::T) where T<:Profile
+    int = interval(p)
+    TensorField(int,profileslope.(Ref(p),int))
+end
 profileangle(p::T) where T<:Profile = atan.(profileslope(p))
 @pure profile(p::T,x) where T<:Profile = p(x)
 @pure profile(p::T,x,c,x0=0) where T<:Profile = profile(p,(x-x0)/c)*c
@@ -34,8 +40,9 @@ profileangle(p::T) where T<:Profile = atan.(profileslope(p))
 @pure profileangle(p::T,x,c,x0=0) where T<:Profile = atan(profileslope(p,x,c,x0))
 @pure interval(::P,c=1,x0=0) where P<:Profile{p} where p = interval(p,c,x0)
 @pure interval(p::Int,c=1,x0=0) = range(x0,c,length=p)
+doubleinterval(p) = p[1]:step(p):p[1]+2(p[end]-p[1])
 function points(N::A,c=1,x0=0) where A<:Profile{p} where p
-    Chain{Submanifold(ℝ^3),1}.(1.0,interval(N,c,x0),profile(N))
+    Chain{Submanifold(ℝ^3),1}.(1.0,interval(N,c,x0),fiber(profile(N)))
 end
 
 const AppendixI = [0,.005,.0125,.025,.05,.075,.1,.15,.2,.25,.3,.4,.5,.6,.7,.8,.9,.95,1]
@@ -55,7 +62,7 @@ end
 @pure (n::FlatPlate)(x,c,x0=0)  = profile(n,x,c,x0)
 @pure profile(::FlatPlate,x,c,x0=nothing) = 0.0
 @pure profileslope(::FlatPlate,x,c=nothing,x0=nothing) = 0.0
-@pure profile(f::FlatPlate{p}) where p = range(0,0,length=p)
+@pure profile(f::FlatPlate{p}) where p = TensorField(interval(f),range(0,0,length=p))
 @pure profileslope(f::FlatPlate) = profile(f)
 
 # parabolic arc

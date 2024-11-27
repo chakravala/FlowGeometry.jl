@@ -1,7 +1,7 @@
 name = "FlowGeometry"
 uuid = "af326652-bfa1-11e9-1b34-cf9047ce1632"
 authors = ["Michael Reed"]
-version = "0.1.0"
+version = "0.1.1"
 
 [deps]
 Cartan = "e24af43f-9fd5-4672-9264-a75f3ae40eb2"
@@ -12,7 +12,7 @@ Requires = "ae029012-a4dd-5104-9daa-d747884805df"
 [compat]
 julia = "1"
 Cartan = "0.3"
-Grassmann = "0.8, 0.9"
+Grassmann = "0.8"
 Requires = "1"
 
 [extras]

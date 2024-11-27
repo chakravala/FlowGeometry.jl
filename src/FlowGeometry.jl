@@ -47,6 +47,8 @@ function edgeslist!(p,r)
     Values{2,Int}.(l+1:l+n,l.+[2:n;1])
 end
 
+# need PointCloud etc operations for refinement (same ID) or union etc (new ID)
+
 addbound(e,r=rectangle(xn,xm,yn,ym)) = [e;edgeslist!(points(e),r)]
 airfoilbox(n) = addbound(airfoiledges(n),rectangle(xn,xm,yn,ym))
 airfoiledges(n) = edgeslist(PointCloud(points(n)))
@@ -81,15 +83,20 @@ end
 
 export rectangletriangle, rectangletriangles, FittedPoint
 
-rectangletriangle(i,m,p) = rectangletriangle(((i-1)%(2(m-1)))+1,((i-1)÷(2(m-1)))+1,m,p)
-function rectangletriangle(i,j,m,p)
+rectangletriangle(i,m) = rectangletriangle(((i-1)%(2(m-1)))+1,((i-1)÷(2(m-1)))+1,m)
+function rectangletriangle(i,j,m)
     k=(j-1)*m+(i÷2)+1;n=m+k
     isodd(i) ? Values(k,n,k+1) : Values(k,n-1,n)
 end
-#rectangletriangle(i,j,m,p) = (k=(j-1)*m+(i÷2)+1;n=m+k;Chain{p,1}(iseven(i) ? Values(k,n,n+1) : Values(k,k-1,n)))
+#rectangletriangle(i,j,m) = (k=(j-1)*m+(i÷2)+1;n=m+k; iseven(i) ? Values(k,n,n+1) : Values(k,k-1,n))
 
-rectangletriangles(p,m=51,JL=51) = [rectangletriangle(i,JL,p) for i ∈ 1:2*(m-1)*(JL-1)]
-rectanglebounds(n=51,JL=51) = [1:JL:JL*n; JL*(n-1)+2:JL*n; JL*(n-1):-JL:JL; JL-1:-1:2]
+function rectangletriangles(m=51,JL=51)
+    SimplexManifold([rectangletriangle(i,JL) for i ∈ 1:2*(m-1)*(JL-1)],m*JL)
+end
+function rectanglebounds(n=51,JL=51)
+    b = [1:JL:JL*n; JL*(n-1)+2:JL*n; JL*(n-1):-JL:JL; JL-1:-1:2]; push!(b,1)
+    SimplexManifold(Values{2,Int}.([(b[i],b[i+1]) for i ∈ 1:length(b)-1]),n*JL)
+end
 
 FittedPoint(k,JL=51) = Chain{Submanifold(ℝ^3),1}(1.0,(k-1)÷JL,(k-1)%JL)
 
@@ -120,20 +127,17 @@ function RakichPoint(k,x,y,s,κ,JL=legnth(y))
     Chain{Submanifold(ℝ^3),1}(1.0,x[xk],s[xk]≠0 ? Rakich(κ[xk],yk,s[xk],y[end],JL) : y[yk])
 end
 
-function RakichPoints(P::CircularArc{T,m}=CircularArc{6,21}(),D=50,n=51,JL=51) where {T,m}
+function rakichpoints(P::CircularArc{T,m}=CircularArc{6,21}(),D=50,n=51,JL=51) where {T,m}
     t,c,x0 = T/100,1,0
     x = RakichPlate(P,D,n)
     y = RakichLine(0,D,JL,t/10)
     s = profile.(Ref(P),x,c,x0)
     κ = [k≠0 ? RakichNewton(D-k,JL,t/10) : 0.0 for k ∈ s]
-    [RakichPoint(k,x,y,s,κ,JL) for k ∈ 1:n*JL]
+    PointCloud([RakichPoint(k,x,y,s,κ,JL) for k ∈ 1:n*JL])
 end
 
 function initrakich(P=CircularArc{6,61}(),D=50,n=101,JL=51)
-    p = PointCloud(RakichPoints(P,D,n,JL))
-    b = rectanglebounds(n,JL); push!(b,1)
-    e = SimplexManifold(Values{2,Int}.([(b[i],b[i+1]) for i ∈ 1:length(b)-1]),length(p))
-    return p,e,SimplexManifold(rectangletriangles(p,n),length(p))
+    rakichpoints(P,D,n,JL),rectanglebounds(n,JL),rectangletriangles(n,JL)
 end
 
 # points
@@ -186,78 +190,146 @@ function sphere(fac::Vector,r=1,p=points(fac))
     return out
 end
 
+function wing(N::Airfoil,λ=0.7,σ=0.5)
+    U,L = imag.(upper(N)),imag.(lower(N))
+    np = length(U)
+    out1 = zeros(np,2np-1)
+    out2 = zeros(np,2np-1)
+    out3 = zeros(np,2np-1)
+    int = interval(N)
+    rint = reverse(int)
+    pf = profile(N.c)
+    for i ∈ 1:np-1
+        out1[:,i] .= (σ*int[i]).+(λ+(1-λ)*rint[i]).*int
+        out2[:,i] .= int[i]
+        out3[:,i] .= fiber(rint[i]*U)
+    end
+    out1[:,np] .= (σ*int[np]).+(λ*rint[np]).*int
+    out2[:,np] .= int[np]
+    for i ∈ 1:np-1
+        out1[:,i+np] .= (σ*rint[i+1]).+(λ+(1-λ)*int[i+1]).*int
+        out2[:,i+np] .= rint[i+1]
+        out3[:,i+np] .= fiber(int[i+1]*L)
+    end
+    TensorField(int⊕(-1:step(int):1),Chain.(out1,out2,out3))
+end
+
+function convhull(p::PointCloud)
+    n = length(p)
+    out = Values{2,Int}[]
+    for i ∈ 1:n
+        pi = base(p)[i]
+        for j ∈ 1:n
+            i==j && continue
+            pj = base(p)[j]
+            pij = pi∧pj
+            val = true
+            for k ∈ 1:n
+                k∈(i,j) && continue
+                pk = base(p)[k]
+                pijk = pij∧pk
+                if Real(pijk) ≈ 0
+                    if Real(abs((pi+pj)/2-pk)) < Real(abs(pi-pj))
+                        val = false
+                        break
+                    end
+                elseif Real(pijk) > 0
+                    val = false
+                    break
+                end
+            end
+            val && push!(out,Values(i,j))
+        end
+    end
+    return SimplexManifold(out,n)
+end
+
+function convhull(p::PointCloud,r)
+    n = length(p)
+    out = Values{2,Int}[]
+    for i ∈ 1:n
+        pi = base(p)[i]
+        for j ∈ 1:n
+            i==j && continue
+            pj = base(p)[j]
+            pij = pi∧pj
+            avg = (pi+pj)/2
+            val = true
+            for k ∈ 1:n
+                k∈(i,j) && continue
+                pk = base(p)[k]
+                dist = Real(abs(avg-pk))
+                dist > r && continue
+                pijk = pij∧pk
+                if Real(pijk) ≈ 0
+                    if dist < Real(abs(pi-pj))
+                        val = false
+                        break
+                    end
+                elseif Real(pijk) > 0
+                    val = false
+                    break
+                end
+            end
+            val && push!(out,Values(i,j))
+        end
+    end
+    return SimplexManifold(out,n)
+end
+
+
 # init
 
 function __init__()
     @require Makie="ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a" begin
-        function Makie.plot(N::Profile,args...)
-            Makie.plot(interval(N),profile(N),args...)
-        end
-        function Makie.plot!(N::Profile,args...)
-            Makie.plot!(interval(N),profile(N),args...)
-        end
-        function Makie.plot(N::Airfoil,args...)
-            Makie.lines(N,args...)
-            Makie.plot!(N.c,args...)
-        end
-        function Makie.plot!(N::Airfoil,args...)
-            Makie.lines!(N,args...)
-            Makie.plot!(N.c,args...)
-        end
+        Makie.lines(N::Profile,args...) = Makie.lines(profile(N),args...)
+        Makie.lines!(N::Profile,args...) = Makie.lines!(profile(N),args...)
         function Makie.lines(N::Airfoil,args...)
-            P = complex(N)
-            Makie.lines([real.(P) imag.(P)],args...)
+            display(Makie.lines(N,args...))
+            Makie.lines!(N.c,args...)
         end
         function Makie.lines!(N::Airfoil,args...)
-            P = complex(N)
-            Makie.lines!([real.(P) imag.(P)],args...)
+            Makie.lines!(N,args...)
+            Makie.lines!(N.c,args...)
         end
-        function Makie.plot(N::DoubleArc,args...)
+        Makie.lines(N::Airfoil,args...) = Makie.lines(complex(N),args...)
+        Makie.lines!(N::Airfoil,args...) = Makie.lines!(complex(N),args...)
+        function Makie.lines(N::DoubleArc,args...)
             U,L = upperlower(N)
-            Makie.plot(real.(U),imag.(U),args...)
-            length(U)==length(L) && Makie.plot!(real.(U),(imag.(U).+imag.(L))./2,args...)
-            Makie.plot!(real.(L),imag.(L),args...)
+            display(Makie.lines(U,args...))
+            length(U)==length(L) && Makie.lines!(fiber(real.(U)),fiber(imag.(U).+imag.(L))./2,args...)
+            Makie.lines!(L,args...)
         end
-        function Makie.plot!(N::DoubleArc,args...)
+        function Makie.lines!(N::DoubleArc,args...)
             U,L = upperlower(N)
-            Makie.plot!(real.(U),imag.(U),args...)
-            length(U)==length(L) && Makie.plot!(real.(U),(imag.(U).+imag.(L))./2,args...)
-            Makie.plot!(real.(L),imag.(L),args...)
+            Makie.lines!(U,args...)
+            length(U)==length(L) && Makie.lines!(fiber(real.(U)),fiber(imag.(U).+imag.(L))./2,args...)
+            Makie.lines!(L,args...)
         end
     end
     @require UnicodePlots="b8865327-cd53-5732-bb35-84acbb429228" begin
-        function UnicodePlots.Plot(N::Profile,args...)
-            UnicodePlots.lineplot(interval(N),profile(N),args...)
-        end
-        function Plot!(p,N::Profile,args...)
-            UnicodePlots.lineplot!(p,interval(N),profile(N),args...)
-        end
-        function UnicodePlots.Plot(N::Airfoil,args...)
-            Plot!(UnicodePlots.lineplot(N,args...),N.c,args...)
-        end
-        function Plot!(p,N::Airfoil,args...)
-            Plot!(UnicodePlots.lineplot!(p,N,args...),N.c,args...)
-        end
+        UnicodePlots.lineplot(N::Profile,args...) = UnicodePlots.lineplot(profile(N),args...)
+        UnicodePlots.lineplot!(p,N::Profile,args...) = UnicodePlots.lineplot!(p,profile(N),args...)
         function UnicodePlots.lineplot(N::Airfoil,args...)
-            P = complex(N)
-            UnicodePlots.lineplot(real.(P),imag.(P),args...)
+            UnicodePlots.lineplot!(UnicodePlots.lineplot(complex(N),args...),N.c,args...)
         end
         function UnicodePlots.lineplot!(p,N::Airfoil,args...)
-            P = complex(N)
-            UnicodePlots.lineplot!(p,real.(P),imag.(P),args...)
+            UnicodePlots.lineplot!(UnicodePlots.lineplot!(p,complex(N),args...),N.c,args...)
         end
-        function UnicodePlots.Plot(N::DoubleArc,args...)
+        function UnicodePlots.lineplot(N::DoubleArc,args...)
             U,L = upperlower(N)
-            p = UnicodePlots.lineplot(real.(U),imag.(U),args...)
-            length(U)==length(L) && UnicodePlots.lineplot!(p,real.(U),(imag.(U).+imag.(L))./2,args...)
-            UnicodePlots.lineplot!(p,real.(L),imag.(L),args...)
+            p = UnicodePlots.lineplot(U,args...)
+            length(U)==length(L) && UnicodePlots.lineplot!(p,fiber(real.(U)),fiber(imag.(U).+imag.(L))./2,args...)
+            UnicodePlots.lineplot!(p,L,args...)
         end
-        function Plot!(p,N::DoubleArc,args...)
+        function UnicodePlots.lineplot!(p,N::DoubleArc,args...)
             U,L = upperlower(N)
-            UnicodePlots.lineplot!(p,real.(U),imag.(U),args...)
-            length(U)==length(L) && UnicodePlots.lineplot!(p,real.(U),(imag.(U).+imag.(L))./2,args...)
-            UnicodePlots.lineplot!(p,real.(L),imag.(L),args...)
+            UnicodePlots.lineplot!(p,U,args...)
+            length(U)==length(L) && UnicodePlots.lineplot!(p,fiber(real.(U)),fiber(imag.(U).+imag.(L))./2,args...)
+            UnicodePlots.lineplot!(p,L,args...)
         end
+        Base.display(t::Airfoil) = (display(typeof(t)); display(UnicodePlots.lineplot(t)))
+        Base.display(t::Profile) = (display(typeof(t)); display(UnicodePlots.lineplot(t)))
     end
     @require TetGen="c5d3f3f7-f850-59f6-8a2e-ffc6dc1317ea" begin
         spheremesh() = TetGen.tetrahedralize(cubesphere(),"vpq1.414a0.1";holes=[Point(0.0,0.0,0.0)])
@@ -274,7 +346,7 @@ function __init__()
     @require MATLAB="10e44e05-a98a-55b3-a45b-ba969058deb6" begin
         decsg(args...) = MATLAB.mxcall(:decsg,1,args...)
         function decsg(N::Airfoil{pts}) where pts
-            P = complex(N)[1:end-1]
+            P = fiber(complex(N))[1:end-1]
             x1,x2,x3,x4 = -1.5,3.5,3.5,-1.5
             y1,y2,y3,y4 = 1.5,1.5,-1.5,-1.5
             R = [[3,4,x1,x2,x3,x4,y1,y2,y3,y4];zeros(2pts-8)]

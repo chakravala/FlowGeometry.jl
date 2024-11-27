@@ -34,31 +34,31 @@ for Side ∈ ("Upper","Lower")
             @pure $Arc{A,p}(a) where {A,p} = new{A,p}(a)
         end
         @pure $Arc(s::S) where S<:Airfoil{P} where P = $Arc{S,length($side(s))}(s)
-        $side(z::A,c=1,x0=0) where A<:Profile = $side(interval(z,c,x0),profile(z).*(c*im))
+        $side(z::A,c=1,x0=0) where A<:Profile = $side(interval(z,c,x0),profile(z)*(c*im))
         interval(U::$Arc,c=1,x0=0)  = real.($side(U.a,c,x0))
         profile(U::$Arc) = imag.($side(U.a))
-        profileslope(f::$Arc,e=initedges(f)) = interp(e,column(gradient(e,profile(f))))
+        profileslope(f::$Arc) = gradient(profile(f))
     end
 end
 
 @pure chord(p) = range(0,0,length=p)
 @pure chord(::Profile{p}) where p = chord(p)
 @pure chord(::Airfoil{p}) where p = chord(p)
-upper(z,r) = (U = z.+r; U[end] = 1; U) # upper surface points xu+im*yu
-lower(z,r) = (L = z.-r; L[end] = 1; L) # lower surface points xl+im*yl
-upper(x,yc,dyc_dx,yt) = upper(x.+im.*yc,im.*cis.(atan.(dyc_dx)).*yt)
-lower(x,yc,dyc_dx,yt) = lower(x.+im.*yc,im.*cis.(atan.(dyc_dx)).*yt)
-upperlower(x,yc,dyc_dx,yt) = upperlower(x.+im.*yc,im.*cis.(atan.(dyc_dx)).*yt)
-upperlower(z::A,c=1,x=0) where A<:Profile = upperlower(interval(z,c,x),profile(z).*(c*im))
+upper(z,r) = (U = z+r; U[end] = 1; U) # upper surface points xu+im*yu
+lower(z,r) = (L = z-r; L[end] = 1; L) # lower surface points xl+im*yl
+upper(x,yc,dyc_dx,yt) = upper(x+im*yc,im*cis.(atan.(dyc_dx))*yt)
+lower(x,yc,dyc_dx,yt) = lower(x+im*yc,im*cis.(atan.(dyc_dx))*yt)
+upperlower(x,yc,dyc_dx,yt) = upperlower(x+im*yc,im*cis.(atan.(dyc_dx))*yt)
+upperlower(z::A,c=1,x=0) where A<:Profile = upperlower(interval(z,c,x),profile(z)*(c*im))
 upperlower(z::A,c=1,x=0) where A<:Airfoil = upper(z,c,x),lower(z,c,x)
 upperlower(z,r) = upper(z,r),lower(z,r)
 
 function Base.complex(N::A) where A<:Airfoil
     U,L = upperlower(N)
-    [U;reverse(L)[2:end]]
+    TorusTopology(TensorField(doubleinterval(interval(N)),[fiber(U);reverse(fiber(L))[2:end]]))
 end
 function points(N::A) where A<:Airfoil
-    z = complex(N)[1:end-1]
+    z = fiber(complex(N))[1:end-1]
     Chain{Submanifold(ℝ^3),1}.(1.0,real.(z),imag.(z))
 end
 
@@ -114,6 +114,8 @@ end
 @pure British{n,p}() where {n,p} = British(Camber{Int(n÷100),p}(),ClarkY{n%100,p}())
 @pure British(c::C,t::T) where {C<:Profile{P},T<:Profile{P}} where P = British{C,T,2P-2}(c,t)
 
+camber(n::British) = n.c
+thickness(n::British) = n.t
 upper(n::British,c=1,x0=0) = upper(getprofiles(n,c,x0)...)
 lower(n::British,c=1,x0=0) = lower(getprofiles(n,c,x0)...)
 upperlower(n::British,c=1,x0=0) = upperlower(getprofiles(n,c,x0)...)
@@ -135,10 +137,13 @@ end
 @pure American{n,p}() where {n,p} = American(Camber{Int(n÷100),p}(),ClarkY{n%100,p}())
 @pure American(c::C,t::T) where {C<:Profile{P},T<:Profile{P}} where P = American{C,T,2P-2}(c,t)
 
+camber(n::American) = n.c
+thickness(n::American) = n.t
 upper(n::American,c=1,x0=0) = upper(getprofiles(n,c,x0)...)
 lower(n::American,c=1,x0=0) = lower(getprofiles(n,c,x0)...)
 upperlower(n::American,c=1,x0=0) = upperlower(getprofiles(n,c,x0)...)
-getprofiles(n::American,c=1,x0=0) = interval(n.c,c,x0),c*profile(n.c),profileslope(n.c),c*profile(n.t)
+getprofiles(n::American,c=1,x0=0) = interval(n,c,x0),c*profile(n.c),profileslope(n.c),c*profile(n.t)
+interval(n::American,c=1,x0=0) = interval(n.c,c,x0)
 
 # NACA specification selection
 
@@ -169,7 +174,10 @@ end
 
 joukowski(R,f,g,b,p) = Joukowski{R,f,g,b,p}()
 
+interval(::Joukowski{R,f,g,b,p}) where {R,f,g,b,p} = interval(2p-1,2π)
+
 function Base.complex(::Joukowski{R,f,g,b,p}) where {R,f,g,b,p}
-    z = R*cis.(interval(2p-1,2π)).-(f-g*im)
-    z .+ b^2*inv.(z)
+    i = interval(2p-1,2π)
+    z = R*cis.(i).-(f-g*im)
+    TensorField(i, z .+ b^2*inv.(z))
 end
