@@ -91,11 +91,11 @@ end
 #rectangletriangle(i,j,m) = (k=(j-1)*m+(i÷2)+1;n=m+k; iseven(i) ? Values(k,n,n+1) : Values(k,k-1,n))
 
 function rectangletriangles(m=51,JL=51)
-    SimplexManifold([rectangletriangle(i,JL) for i ∈ 1:2*(m-1)*(JL-1)],m*JL)
+    SimplexTopology([rectangletriangle(i,JL) for i ∈ 1:2*(m-1)*(JL-1)],m*JL)
 end
 function rectanglebounds(n=51,JL=51)
     b = [1:JL:JL*n; JL*(n-1)+2:JL*n; JL*(n-1):-JL:JL; JL-1:-1:2]; push!(b,1)
-    SimplexManifold(Values{2,Int}.([(b[i],b[i+1]) for i ∈ 1:length(b)-1]),n*JL)
+    SimplexTopology(Values{2,Int}.([(b[i],b[i+1]) for i ∈ 1:length(b)-1]),n*JL)
 end
 
 FittedPoint(k,JL=51) = Chain{Submanifold(ℝ^3),1}(1.0,(k-1)÷JL,(k-1)%JL)
@@ -137,7 +137,8 @@ function rakichpoints(P::CircularArc{T,m}=CircularArc{6,21}(),D=50,n=51,JL=51) w
 end
 
 function initrakich(P=CircularArc{6,61}(),D=50,n=101,JL=51)
-    rakichpoints(P,D,n,JL),rectanglebounds(n,JL),rectangletriangles(n,JL)
+    p = rakichpoints(P,D,n,JL)
+    p(rectangletriangles(n,JL)),p(rectanglebounds(n,JL))
 end
 
 # points
@@ -241,7 +242,7 @@ function convhull(p::PointCloud)
             val && push!(out,Values(i,j))
         end
     end
-    return SimplexManifold(out,n)
+    return SimplexTopology(out,n)
 end
 
 function convhull(p::PointCloud,r)
@@ -274,7 +275,7 @@ function convhull(p::PointCloud,r)
             val && push!(out,Values(i,j))
         end
     end
-    return SimplexManifold(out,n)
+    return SimplexTopology(out,n)
 end
 
 
