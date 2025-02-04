@@ -172,23 +172,24 @@ icosahedron(a=1,b=a*Irrational{:φ}()) =
 end
 
 sphere(r=1) = icosahedron(r/sqrt(1+Irrational{:φ}()^2))
-function sphere(fac::Vector,r=1,p=points(fac))
+function sphere(fac::SimplexBundle,r=1,p=fullpoints(fac))
     M = Manifold(fac)
-    out = typeof(fac[1])[]
-    for f ∈ fac
-        p0,p1,p2 = p[value(f)]
+    out = Values{3,Int}[]
+    for f ∈ topology(fac)
+        p0,p1,p2 = p[f]
         p3 = circlemid(p0+p1,r)
         p4 = circlemid(p1+p2,r)
         p5 = circlemid(p2+p0,r)
-        v0,v1,v2 = value(f)
+        v0,v1,v2 = f
         v3,v4,v5 = length(p).+(1,2,3)
-        push!(value(p),p3,p4,p5)
-        push!(out,Chain{M,1}(v0, v3, v5))
-        push!(out,Chain{M,1}(v3, v1, v4))
-        push!(out,Chain{M,1}(v4, v2, v5))
-        push!(out,Chain{M,1}(v3, v4, v5))
+        push!(fullpoints(p),p3,p4,p5)
+        push!(out,Values(v0, v3, v5))
+        push!(out,Values(v3, v1, v4))
+        push!(out,Values(v4, v2, v5))
+        push!(out,Values(v3, v4, v5))
     end
-    return out
+    np = length(p)
+    return fac(SimplexTopology(0,out,Base.OneTo(np),np))
 end
 
 function wing(N::Airfoil,λ=0.7,σ=0.5)
@@ -333,15 +334,17 @@ function __init__()
         Base.display(t::Profile) = (display(typeof(t)); display(UnicodePlots.lineplot(t)))
     end
     @require TetGen="c5d3f3f7-f850-59f6-8a2e-ffc6dc1317ea" begin
-        spheremesh() = TetGen.tetrahedralize(cubesphere(),"vpq1.414a0.1";holes=[Point(0.0,0.0,0.0)])
+        spheremesh() = TetGen.tetrahedralize(cubesphere(),"vpq1.414a0.1";holes=[TetGen.Point(0.0,0.0,0.0)])
         cubemesh() = TetGen.tetrahedralize(∂(MiniQhull.delaunay(cube(2))), "vpq1.414a0.1")
     end
     @require MiniQhull="978d7f02-9e05-4691-894f-ae31a51d76ca" begin
         function cubesphere(r=1,c=2)
             p = PointCloud(sphere(r))
             t = sphere(sphere(∂(MiniQhull.delaunay(p)),r),r)
-            push!(p,cube(c*r)...)
-            [t;∂(MiniQhull.delaunay(p,length(p)-7:length(p)))]
+            push!(fullpoints(p),cube(c*r)...)
+            np = length(p)
+            out = [topology(t);topology(∂(MiniQhull.delaunay(p,np-7:np)))]
+            p(SimplexTopology(0,out,np))
         end
     end
     @require MATLAB="10e44e05-a98a-55b3-a45b-ba969058deb6" begin
