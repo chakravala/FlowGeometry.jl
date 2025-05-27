@@ -335,9 +335,15 @@ function __init__()
     end
     @require TetGen="c5d3f3f7-f850-59f6-8a2e-ffc6dc1317ea" begin
         spheremesh() = TetGen.tetrahedralize(cubesphere(),"vpq1.414a0.1";holes=[TetGen.Point(0.0,0.0,0.0)])
-        cubemesh() = TetGen.tetrahedralize(∂(MiniQhull.delaunay(cube(2))), "vpq1.414a0.1")
+        cubemesh(hmax=0.1) = TetGen.tetrahedralize(∂(MiniQhull.delaunay(cube(2))), "vpq1.414a$hmax")
     end
     @require MiniQhull="978d7f02-9e05-4691-894f-ae31a51d76ca" begin
+        export cubesphere
+        function spheresurf(r=1)
+            p = PointCloud(sphere(r))
+            t = sphere(sphere(∂(MiniQhull.delaunay(p)),r),r)
+            p(t)
+        end
         function cubesphere(r=1,c=2)
             p = PointCloud(sphere(r))
             t = sphere(sphere(∂(MiniQhull.delaunay(p)),r),r)
