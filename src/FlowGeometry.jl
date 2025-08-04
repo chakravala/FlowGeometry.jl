@@ -25,7 +25,7 @@ module FlowGeometry
 #   (____ /                               .-/
 #                                        (_/
 
-using Requires, Grassmann, Cartan, LinearAlgebra
+using Grassmann, Cartan, LinearAlgebra
 
 import Cartan: PointCloud, points, edges, initpoints, initedges
 import Base: @pure
@@ -279,92 +279,18 @@ function convhull(p::PointCloud,r)
     return SimplexTopology(out,n)
 end
 
+#if !isdefined(Base, :get_extension)
+using Requires
+#end
 
-# init
-
+#@static if !isdefined(Base, :get_extension)
 function __init__()
-    @require Makie="ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a" begin
-        Makie.lines(N::Profile,args...) = Makie.lines(profile(N),args...)
-        Makie.lines!(N::Profile,args...) = Makie.lines!(profile(N),args...)
-        function Makie.lines(N::Airfoil,args...)
-            display(Makie.lines(N,args...))
-            Makie.lines!(N.c,args...)
-        end
-        function Makie.lines!(N::Airfoil,args...)
-            Makie.lines!(N,args...)
-            Makie.lines!(N.c,args...)
-        end
-        Makie.lines(N::Airfoil,args...) = Makie.lines(complex(N),args...)
-        Makie.lines!(N::Airfoil,args...) = Makie.lines!(complex(N),args...)
-        function Makie.lines(N::DoubleArc,args...)
-            U,L = upperlower(N)
-            display(Makie.lines(U,args...))
-            length(U)==length(L) && Makie.lines!(fiber(real.(U)),fiber(imag.(U).+imag.(L))./2,args...)
-            Makie.lines!(L,args...)
-        end
-        function Makie.lines!(N::DoubleArc,args...)
-            U,L = upperlower(N)
-            Makie.lines!(U,args...)
-            length(U)==length(L) && Makie.lines!(fiber(real.(U)),fiber(imag.(U).+imag.(L))./2,args...)
-            Makie.lines!(L,args...)
-        end
-    end
-    @require UnicodePlots="b8865327-cd53-5732-bb35-84acbb429228" begin
-        UnicodePlots.lineplot(N::Profile,args...) = UnicodePlots.lineplot(profile(N),args...)
-        UnicodePlots.lineplot!(p,N::Profile,args...) = UnicodePlots.lineplot!(p,profile(N),args...)
-        function UnicodePlots.lineplot(N::Airfoil,args...)
-            UnicodePlots.lineplot!(UnicodePlots.lineplot(complex(N),args...),N.c,args...)
-        end
-        function UnicodePlots.lineplot!(p,N::Airfoil,args...)
-            UnicodePlots.lineplot!(UnicodePlots.lineplot!(p,complex(N),args...),N.c,args...)
-        end
-        function UnicodePlots.lineplot(N::DoubleArc,args...)
-            U,L = upperlower(N)
-            p = UnicodePlots.lineplot(U,args...)
-            length(U)==length(L) && UnicodePlots.lineplot!(p,fiber(real.(U)),fiber(imag.(U).+imag.(L))./2,args...)
-            UnicodePlots.lineplot!(p,L,args...)
-        end
-        function UnicodePlots.lineplot!(p,N::DoubleArc,args...)
-            U,L = upperlower(N)
-            UnicodePlots.lineplot!(p,U,args...)
-            length(U)==length(L) && UnicodePlots.lineplot!(p,fiber(real.(U)),fiber(imag.(U).+imag.(L))./2,args...)
-            UnicodePlots.lineplot!(p,L,args...)
-        end
-        Base.display(t::Airfoil) = (display(typeof(t)); display(UnicodePlots.lineplot(t)))
-        Base.display(t::Profile) = (display(typeof(t)); display(UnicodePlots.lineplot(t)))
-    end
-    @require TetGen="c5d3f3f7-f850-59f6-8a2e-ffc6dc1317ea" begin
-        spheremesh() = TetGen.tetrahedralize(cubesphere(),"vpq1.414a0.1";holes=[TetGen.Point(0.0,0.0,0.0)])
-        cubemesh(hmax=0.1) = TetGen.tetrahedralize(∂(MiniQhull.delaunay(cube(2))), "vpq1.414a$hmax")
-    end
-    @require MiniQhull="978d7f02-9e05-4691-894f-ae31a51d76ca" begin
-        export cubesphere
-        function spheresurf(r=1)
-            p = PointCloud(sphere(r))
-            t = sphere(sphere(∂(MiniQhull.delaunay(p)),r),r)
-            p(t)
-        end
-        function cubesphere(r=1,c=2)
-            p = PointCloud(sphere(r))
-            t = sphere(sphere(∂(MiniQhull.delaunay(p)),r),r)
-            push!(fullpoints(p),cube(c*r)...)
-            np = length(p)
-            out = [topology(t);topology(∂(MiniQhull.delaunay(p,np-7:np)))]
-            p(SimplexTopology(0,out,np))
-        end
-    end
-    @require MATLAB="10e44e05-a98a-55b3-a45b-ba969058deb6" begin
-        decsg(args...) = MATLAB.mxcall(:decsg,1,args...)
-        function decsg(N::Airfoil{pts}) where pts
-            P = fiber(complex(N))[1:end-1]
-            x1,x2,x3,x4 = -1.5,3.5,3.5,-1.5
-            y1,y2,y3,y4 = 1.5,1.5,-1.5,-1.5
-            R = [[3,4,x1,x2,x3,x4,y1,y2,y3,y4];zeros(2pts-8)]
-            A = [[2,pts];[real.(P);imag.(P)]]
-            decsg([R A],"R-A","RA")
-        end
-        export decsg
-    end
+    @require Makie="ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a" include("../ext/MakieExt.jl")
+    @require UnicodePlots="b8865327-cd53-5732-bb35-84acbb429228" include("../ext/UnicodePlotsExt.jl")
+    @require TetGen="c5d3f3f7-f850-59f6-8a2e-ffc6dc1317ea" include("../ext/TetGenExt.jl")
+    @require MiniQhull="978d7f02-9e05-4691-894f-ae31a51d76ca" include("../ext/MiniQhullExt.jl")
+    @require MATLAB="10e44e05-a98a-55b3-a45b-ba969058deb6" include("../ext/MATLABExt.jl")
 end
+#end
 
 end # module
