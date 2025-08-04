@@ -279,11 +279,25 @@ function convhull(p::PointCloud,r)
     return SimplexTopology(out,n)
 end
 
-#if !isdefined(Base, :get_extension)
-using Requires
-#end
+function decsg(N::Airfoil{pts}) where pts
+    P = fiber(complex(N))[1:end-1]
+    x1,x2,x3,x4 = -1.5,3.5,3.5,-1.5
+    y1,y2,y3,y4 = 1.5,1.5,-1.5,-1.5
+    R = [[3,4,x1,x2,x3,x4,y1,y2,y3,y4];zeros(2pts-8)]
+    A = [[2,pts];[real.(P);imag.(P)]]
+    decsg([R A],"R-A","RA")
+end
 
-#@static if !isdefined(Base, :get_extension)
+export decsg, cubesphere, spheresurf, spheremesh, cubemesh
+for fun ∈ (:cubesphere,:spheresurf,:spheremesh,:cubemesh)
+    @eval function $fun end
+end
+
+if !isdefined(Base, :get_extension)
+using Requires
+end
+
+@static if !isdefined(Base, :get_extension)
 function __init__()
     @require Makie="ee78f7c6-11fb-53f2-987a-cfe4a2b5a57a" include("../ext/MakieExt.jl")
     @require UnicodePlots="b8865327-cd53-5732-bb35-84acbb429228" include("../ext/UnicodePlotsExt.jl")
@@ -291,6 +305,6 @@ function __init__()
     @require MiniQhull="978d7f02-9e05-4691-894f-ae31a51d76ca" include("../ext/MiniQhullExt.jl")
     @require MATLAB="10e44e05-a98a-55b3-a45b-ba969058deb6" include("../ext/MATLABExt.jl")
 end
-#end
+end
 
 end # module

@@ -17,11 +17,11 @@ MiniQhull = "978d7f02-9e05-4691-894f-ae31a51d76ca"
 MATLAB = "10e44e05-a98a-55b3-a45b-ba969058deb6"
 
 [extensions]
-#MakieExt = "Makie"
-#UnicodePlotsExt = "UnicodePlots"
-#TetGenExt = "TetGen"
-#MiniQhullExt = "MiniQhull"
-#MATLABExt = "MATLAB"
+MakieExt = "Makie"
+UnicodePlotsExt = "UnicodePlots"
+TetGenExt = "TetGen"
+MiniQhullExt = "MiniQhull"
+MATLABExt = "MATLAB"
 
 [compat]
 julia = "1"

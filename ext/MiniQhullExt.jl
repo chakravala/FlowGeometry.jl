@@ -1,3 +1,5 @@
+module MiniQhullExt
+
 #   This file is part of FlowGeometry.jl
 #   It is licensed under the AGPL license
 #   FlowGeometry Copyright (C) 2020 Michael Reed
@@ -11,13 +13,15 @@
 #   https://github.com/chakravala
 #   https://crucialflow.com
 
-export cubesphere
-function spheresurf(r=1)
+using Grassmann, Cartan, FlowGeometry
+isdefined(FlowGeometry, :Requires) ? (import FlowGeometry: MiniQhull) : (using MiniQhull)
+
+function FlowGeometry.spheresurf(r=1)
     p = PointCloud(sphere(r))
     t = sphere(sphere(∂(MiniQhull.delaunay(p)),r),r)
     p(t)
 end
-function cubesphere(r=1,c=2)
+function FlowGeometry.cubesphere(r=1,c=2)
     p = PointCloud(sphere(r))
     t = sphere(sphere(∂(MiniQhull.delaunay(p)),r),r)
     push!(fullpoints(p),cube(c*r)...)
@@ -26,3 +30,4 @@ function cubesphere(r=1,c=2)
     p(SimplexTopology(0,out,np))
 end
 
+end # module

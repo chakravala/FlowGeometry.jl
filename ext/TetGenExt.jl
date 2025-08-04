@@ -1,3 +1,5 @@
+module TetGenExt
+
 #   This file is part of FlowGeometry.jl
 #   It is licensed under the AGPL license
 #   FlowGeometry Copyright (C) 2020 Michael Reed
@@ -11,6 +13,10 @@
 #   https://github.com/chakravala
 #   https://crucialflow.com
 
-spheremesh() = TetGen.tetrahedralize(cubesphere(),"vpq1.414a0.1";holes=[TetGen.Point(0.0,0.0,0.0)])
-cubemesh(hmax=0.1) = TetGen.tetrahedralize(∂(MiniQhull.delaunay(cube(2))), "vpq1.414a$hmax")
+using Grassmann, Cartan, FlowGeometry
+isdefined(FlowGeometry, :Requires) ? (import FlowGeometry: TetGen) : (using TetGen)
 
+FlowGeometry.spheremesh() = TetGen.tetrahedralize(cubesphere(),"vpq1.414a0.1";holes=[TetGen.Point(0.0,0.0,0.0)])
+FlowGeometry.cubemesh(hmax=0.1) = TetGen.tetrahedralize(∂(MiniQhull.delaunay(cube(2))), "vpq1.414a$hmax")
+
+end # module

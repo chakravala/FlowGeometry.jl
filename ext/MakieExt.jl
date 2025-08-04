@@ -1,3 +1,5 @@
+module MakieExt
+
 #   This file is part of FlowGeometry.jl
 #   It is licensed under the AGPL license
 #   FlowGeometry Copyright (C) 2020 Michael Reed
@@ -11,16 +13,19 @@
 #   https://github.com/chakravala
 #   https://crucialflow.com
 
-Makie.lines(N::Profile,args...) = Makie.lines(profile(N),args...)
-Makie.lines!(N::Profile,args...) = Makie.lines!(profile(N),args...)
-function Makie.lines(N::Airfoil,args...)
+using Grassmann, Cartan, FlowGeometry
+isdefined(FlowGeometry, :Requires) ? (import FlowGeometry: Makie) : (using Makie)
+
+Makie.lines(N::FlowGeometry.Profile,args...) = Makie.lines(profile(N),args...)
+Makie.lines!(N::FlowGeometry.Profile,args...) = Makie.lines!(profile(N),args...)
+#=function Makie.lines(N::Airfoil,args...)
     display(Makie.lines(N,args...))
     Makie.lines!(N.c,args...)
 end
 function Makie.lines!(N::Airfoil,args...)
     Makie.lines!(N,args...)
     Makie.lines!(N.c,args...)
-end
+end=#
 Makie.lines(N::Airfoil,args...) = Makie.lines(complex(N),args...)
 Makie.lines!(N::Airfoil,args...) = Makie.lines!(complex(N),args...)
 function Makie.lines(N::DoubleArc,args...)
@@ -36,3 +41,4 @@ function Makie.lines!(N::DoubleArc,args...)
     Makie.lines!(L,args...)
 end
 
+end # module

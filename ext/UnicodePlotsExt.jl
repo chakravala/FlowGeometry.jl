@@ -1,3 +1,5 @@
+module UnicodePlotsExt
+
 #   This file is part of FlowGeometry.jl
 #   It is licensed under the AGPL license
 #   FlowGeometry Copyright (C) 2020 Michael Reed
@@ -11,8 +13,11 @@
 #   https://github.com/chakravala
 #   https://crucialflow.com
 
-UnicodePlots.lineplot(N::Profile,args...) = UnicodePlots.lineplot(profile(N),args...)
-UnicodePlots.lineplot!(p,N::Profile,args...) = UnicodePlots.lineplot!(p,profile(N),args...)
+using Grassmann, Cartan, FlowGeometry
+isdefined(FlowGeometry, :Requires) ? (import FlowGeometry: UnicodePlots) : (using UnicodePlots)
+
+UnicodePlots.lineplot(N::FlowGeometry.Profile,args...) = UnicodePlots.lineplot(profile(N),args...)
+UnicodePlots.lineplot!(p,N::FlowGeometry.Profile,args...) = UnicodePlots.lineplot!(p,profile(N),args...)
 function UnicodePlots.lineplot(N::Airfoil,args...)
     UnicodePlots.lineplot!(UnicodePlots.lineplot(complex(N),args...),N.c,args...)
 end
@@ -32,5 +37,6 @@ function UnicodePlots.lineplot!(p,N::DoubleArc,args...)
     UnicodePlots.lineplot!(p,L,args...)
 end
 Base.display(t::Airfoil) = (display(typeof(t)); display(UnicodePlots.lineplot(t)))
-Base.display(t::Profile) = (display(typeof(t)); display(UnicodePlots.lineplot(t)))
+Base.display(t::FlowGeometry.Profile) = (display(typeof(t)); display(UnicodePlots.lineplot(t)))
 
+end # module
